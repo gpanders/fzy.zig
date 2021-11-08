@@ -3,6 +3,8 @@ const std = @import("std");
 const Tty = @import("../tty.zig");
 const Choices = @import("../choices.zig");
 const Options = @import("../options.zig");
+const StackArrayList = @import("../stack_array_list.zig").StackArrayList;
+
 const match = @import("../match.zig");
 
 const config = @cImport({
@@ -26,12 +28,12 @@ tty: *Tty,
 choices: *Choices,
 options: *Options,
 
-search: [SEARCH_SIZE_MAX]u8 = undefined,
-last_search: [SEARCH_SIZE_MAX]u8 = undefined,
+search: StackArrayList(u8, SEARCH_SIZE_MAX) = .{},
+last_search: StackArrayList(u8, SEARCH_SIZE_MAX) = .{},
 cursor: usize = 0,
 
 ambiguous_key_pending: bool = false,
-input: [32]u8 = undefined,
+input: StackArrayList(u8, 32) = .{},
 
 exit: i32 = -1,
 
@@ -43,16 +45,11 @@ pub fn init(allocator: *std.mem.Allocator, tty: *Tty, choices: *Choices, options
         .options = options,
     };
 
-    std.mem.copy(u8, &self.input, "");
-    std.mem.copy(u8, &self.last_search, "");
-
     if (options.init_search) |q| {
-        std.mem.copy(u8, &self.search, q);
-    } else {
-        std.mem.copy(u8, &self.search, "");
+        self.search.set(q);
     }
 
-    self.cursor = self.search.len;
+    self.cursor = self.search.items.len;
 
     try self.update();
 
@@ -68,7 +65,7 @@ pub fn run(self: *TtyInterface) !i32 {
             }
 
             var s = try self.tty.getChar();
-            self.handleInput(&[_]u8{s}, false);
+            try self.handleInput(&[_]u8{s}, false);
 
             if (self.exit >= 0) {
                 return self.exit;
@@ -82,7 +79,7 @@ pub fn run(self: *TtyInterface) !i32 {
         }
 
         if (self.ambiguous_key_pending) {
-            self.handleInput("", true);
+            try self.handleInput("", true);
             if (self.exit >= 0) {
                 return self.exit;
             }
@@ -95,17 +92,8 @@ pub fn run(self: *TtyInterface) !i32 {
 }
 
 fn update(self: *TtyInterface) !void {
-    try self.choices.search(&self.search);
-    std.mem.copy(u8, &self.last_search, &self.search);
-}
-
-fn appendSearch(self: *TtyInterface, c: u8) void {
-    var search = self.search;
-    if (search.len < SEARCH_SIZE_MAX) {
-        std.mem.copyBackwards(u8, search[self.cursor+1..], search[self.cursor..]);
-        search[self.cursor] = c;
-        self.cursor += 1;
-    }
+    try self.choices.search(self.search.items);
+    self.last_search.set(self.search.items);
 }
 
 fn draw(self: *TtyInterface) !void {
@@ -151,7 +139,7 @@ fn draw(self: *TtyInterface) !void {
     _ = try tty.buffered_writer.writer().write(options.prompt);
     i = 0;
     while (i < self.cursor) : (i += 1) {
-        _ = try tty.buffered_writer.writer().writeByte(self.search[i]);
+        _ = try tty.buffered_writer.writer().writeByte(self.search.items[i]);
     }
     tty.flush();
 }
@@ -160,14 +148,14 @@ fn drawMatch(self: *TtyInterface, choice: []const u8, selected: bool) void {
     var tty = self.tty;
     var options = self.options;
     var search = self.search;
-    var n = search.len;
+    var n = search.items.len;
     var positions: [match.MAX_LEN]isize = undefined;
     var i: usize = 0;
     while (i < n + 1 and i < match.MAX_LEN) : (i += 1) {
         positions[i] = -1;
     }
 
-    var score = match.matchPositions(self.allocator, &search, choice, &positions);
+    var score = match.matchPositions(self.allocator, search.items, choice, &positions);
 
     if (options.show_scores) {
         if (score == match.SCORE_MIN) {
@@ -219,26 +207,25 @@ fn keyCtrl(key: u8) []const u8 {
 }
 
 const keybindings = [_]KeyBinding{
-    .{ "\x1b", Action.exit },
+    .{ .key = "\x1b", .action = Action.exit },
 };
 
 fn isPrintOrUnicode(c: u8) bool {
     return std.ascii.isPrint(c) or (c & (1 << 7)) != 0;
 }
 
-fn handleInput(self: *TtyInterface, s: []const u8, handle_ambiguous_key: bool) void {
+fn handleInput(self: *TtyInterface, s: []const u8, handle_ambiguous_key: bool) !void {
     self.ambiguous_key_pending = false;
-    var input = self.input;
-    _ = try std.fmt.bufPrint(self.input, "{s}{s}", .{ self.input, s });
+    self.input.appendSlice(s);
 
     // Figure out if we have completed a keybinding and whether we're in
     // the middle of one (both can happen, because of Esc)
     var found_keybinding: ?KeyBinding = null;
     var in_middle = false;
     for (keybindings) |k| {
-        if (std.mem.eql(u8, input, k.key)) {
+        if (std.mem.eql(u8, self.input.items, k.key)) {
             found_keybinding = k;
-        } else if (std.mem.eql(u8, input, k.key[0..input.len])) {
+        } else if (std.mem.eql(u8, self.input.items, k.key[0..self.input.items.len])) {
             in_middle = true;
         }
     }
@@ -247,7 +234,7 @@ fn handleInput(self: *TtyInterface, s: []const u8, handle_ambiguous_key: bool) v
     if (found_keybinding) |keybinding| {
         if (!in_middle or handle_ambiguous_key) {
             keybinding.action(self);
-            self.input = "";
+            self.input.clear();
             return;
         }
     }
@@ -265,11 +252,12 @@ fn handleInput(self: *TtyInterface, s: []const u8, handle_ambiguous_key: bool) v
     }
 
     // No matching keybinding, add to search
-    for (input) |c| {
+    for (self.input.items) |c| {
         if (isPrintOrUnicode(c)) {
-            self.appendSearch(c);
+            self.search.insert(self.cursor, c);
+            self.cursor += 1;
         }
     }
 
-    self.input = "";
+    self.input.clear();
 }
