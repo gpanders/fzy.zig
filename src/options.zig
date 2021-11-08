@@ -29,9 +29,9 @@ benchmark: u32 = 0,
 filter: ?[]const u8 = null,
 init_search: ?[]const u8 = null,
 show_scores: bool = false,
-scrolloff: u32 = 1,
+scrolloff: usize = 1,
 tty_filename: []const u8 = config.DEFAULT_TTY,
-num_lines: u32 = config.DEFAULT_NUM_LINES,
+num_lines: usize = config.DEFAULT_NUM_LINES,
 prompt: []const u8 = config.DEFAULT_PROMPT,
 workers: usize = config.DEFAULT_WORKERS,
 input_delimiter: u8 = '\n',
@@ -69,7 +69,7 @@ pub fn new() !Options {
 
     if (args.option("--lines")) |l| {
         options.num_lines = blk: {
-            if (std.fmt.parseUnsigned(u32, l, 10)) |lines| {
+            if (std.fmt.parseUnsigned(usize, l, 10)) |lines| {
                 if (lines >= 3) {
                     break :blk lines;
                 }

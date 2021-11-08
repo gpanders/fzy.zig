@@ -55,12 +55,12 @@ pub fn main() anyerror!void {
             options.num_lines = choices.size();
         }
 
-        const num_lines_adjustment = if (options.show_info) 2 else 1;
+        const num_lines_adjustment: usize = if (options.show_info) 2 else 1;
         if (options.num_lines + num_lines_adjustment > tty.max_height) {
             options.num_lines = tty.max_height - num_lines_adjustment;
         }
 
-        var tty_interface = TtyInterface.init(&tty, &choices, &options);
-        return tty_interface.run();
+        var tty_interface = try TtyInterface.init(allocator, &tty, &choices, &options);
+        _ = try tty_interface.run();
     }
 }
