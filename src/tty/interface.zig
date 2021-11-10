@@ -3,7 +3,6 @@ const std = @import("std");
 const Tty = @import("../tty.zig");
 const Choices = @import("../choices.zig");
 const Options = @import("../options.zig");
-const StackArrayList = @import("../stack_array_list.zig").StackArrayList;
 
 const match = @import("../match.zig");
 
@@ -28,12 +27,12 @@ tty: *Tty,
 choices: *Choices,
 options: *Options,
 
-search: StackArrayList(u8, SEARCH_SIZE_MAX) = .{},
-last_search: StackArrayList(u8, SEARCH_SIZE_MAX) = .{},
+search: std.BoundedArray(u8, SEARCH_SIZE_MAX) = .{ .buffer = undefined },
+last_search: std.BoundedArray(u8, SEARCH_SIZE_MAX) = .{ .buffer = undefined },
 cursor: usize = 0,
 
 ambiguous_key_pending: bool = false,
-input: StackArrayList(u8, 32) = .{},
+input: std.BoundedArray(u8, 32) = .{ .buffer = undefined },
 
 exit: i32 = -1,
 
@@ -46,10 +45,10 @@ pub fn init(allocator: *std.mem.Allocator, tty: *Tty, choices: *Choices, options
     };
 
     if (options.init_search) |q| {
-        self.search.set(q);
+        try self.search.appendSlice(q);
     }
 
-    self.cursor = self.search.items.len;
+    self.cursor = self.search.len;
 
     try self.update();
 
@@ -92,8 +91,8 @@ pub fn run(self: *TtyInterface) !i32 {
 }
 
 fn update(self: *TtyInterface) !void {
-    try self.choices.search(self.search.items);
-    self.last_search.set(self.search.items);
+    try self.choices.search(self.search.constSlice());
+    try self.last_search.replaceRange(0, self.last_search.len, self.search.constSlice());
 }
 
 fn draw(self: *TtyInterface) !void {
@@ -139,7 +138,7 @@ fn draw(self: *TtyInterface) !void {
     _ = try tty.buffered_writer.writer().write(options.prompt);
     i = 0;
     while (i < self.cursor) : (i += 1) {
-        _ = try tty.buffered_writer.writer().writeByte(self.search.items[i]);
+        _ = try tty.buffered_writer.writer().writeByte(self.search.get(i));
     }
     tty.flush();
 }
@@ -148,14 +147,14 @@ fn drawMatch(self: *TtyInterface, choice: []const u8, selected: bool) void {
     var tty = self.tty;
     var options = self.options;
     var search = self.search;
-    var n = search.items.len;
+    var n = search.len;
     var positions: [match.MAX_LEN]isize = undefined;
     var i: usize = 0;
     while (i < n + 1 and i < match.MAX_LEN) : (i += 1) {
         positions[i] = -1;
     }
 
-    var score = match.matchPositions(self.allocator, search.items, choice, &positions);
+    var score = match.matchPositions(self.allocator, search.constSlice(), choice, &positions);
 
     if (options.show_scores) {
         if (score == match.SCORE_MIN) {
@@ -216,16 +215,16 @@ fn isPrintOrUnicode(c: u8) bool {
 
 fn handleInput(self: *TtyInterface, s: []const u8, handle_ambiguous_key: bool) !void {
     self.ambiguous_key_pending = false;
-    self.input.appendSlice(s);
+    try self.input.appendSlice(s);
 
     // Figure out if we have completed a keybinding and whether we're in
     // the middle of one (both can happen, because of Esc)
     var found_keybinding: ?KeyBinding = null;
     var in_middle = false;
     for (keybindings) |k| {
-        if (std.mem.eql(u8, self.input.items, k.key)) {
+        if (std.mem.eql(u8, self.input.slice(), k.key)) {
             found_keybinding = k;
-        } else if (std.mem.eql(u8, self.input.items, k.key[0..self.input.items.len])) {
+        } else if (std.mem.eql(u8, self.input.slice(), k.key[0..self.input.len])) {
             in_middle = true;
         }
     }
@@ -234,7 +233,7 @@ fn handleInput(self: *TtyInterface, s: []const u8, handle_ambiguous_key: bool) !
     if (found_keybinding) |keybinding| {
         if (!in_middle or handle_ambiguous_key) {
             keybinding.action(self);
-            self.input.clear();
+            self.input.len = 0;
             return;
         }
     }
@@ -252,12 +251,12 @@ fn handleInput(self: *TtyInterface, s: []const u8, handle_ambiguous_key: bool) !
     }
 
     // No matching keybinding, add to search
-    for (self.input.items) |c| {
+    for (self.input.constSlice()) |c| {
         if (isPrintOrUnicode(c)) {
-            self.search.insert(self.cursor, c);
+            try self.search.insert(self.cursor, c);
             self.cursor += 1;
         }
     }
 
-    self.input.clear();
+    self.input.len = 0;
 }
