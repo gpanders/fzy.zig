@@ -1,4 +1,11 @@
 const std = @import("std");
+const builtin = @import("builtin");
+const system = std.os.system;
+
+const libc = @cImport({
+    @cInclude("stdio.h");
+    @cInclude("string.h");
+});
 
 const Tty = @This();
 
@@ -21,7 +28,7 @@ max_width: usize = 0,
 max_height: usize = 0,
 
 pub fn reset(self: *Tty) void {
-    std.os.tcsetattr(self.fdin, std.os.TCSA.NOW, &self.original_termios);
+    std.os.tcsetattr(self.fdin, std.os.TCSA.NOW, self.original_termios) catch unreachable;
 }
 
 pub fn close(self: *Tty) void {
@@ -45,8 +52,8 @@ pub fn init(filename: []const u8) !Tty {
     };
 
     var new_termios = tty.original_termios;
-    new_termios.iflag &= ~(@as(@TypeOf(new_termios.iflag), std.c.ICRNL));
-    new_termios.lflag &= ~(@as(@TypeOf(new_termios.lflag), (std.c.ICANON | std.c.ECHO | std.c.ISIG)));
+    new_termios.iflag &= ~(@as(@TypeOf(new_termios.iflag), system.ICRNL));
+    new_termios.lflag &= ~(@as(@TypeOf(new_termios.lflag), (system.ICANON | system.ECHO | system.ISIG)));
 
     std.os.tcsetattr(tty.fdin, std.os.TCSA.NOW, new_termios) catch {
         std.debug.print("Failed to update termios attributes\n", .{});
@@ -62,8 +69,8 @@ pub fn init(filename: []const u8) !Tty {
 }
 
 pub fn getWinSize(self: *Tty) void {
-    var ws: std.c.winsize = undefined;
-    if (std.c.ioctl(self.fout.handle, std.c.T.IOCGWINSZ, &ws) == -1) {
+    var ws: system.winsize = undefined;
+    if (system.ioctl(self.fout.handle, system.T.IOCGWINSZ, &ws) == -1) {
         self.max_width = 80;
         self.max_height = 25;
     } else {
@@ -125,6 +132,10 @@ pub fn flush(self: *Tty) void {
     self.buffered_writer.flush() catch unreachable;
 }
 
+fn sgr(self: *Tty, code: i32) void {
+    self.printf("\x1b[{d}m", .{code});
+}
+
 pub fn getChar(self: *Tty) !u8 {
     var c: [1]u8 = undefined;
     if (std.os.read(self.fdin, &c)) |bytes_read| {
@@ -139,26 +150,54 @@ pub fn getChar(self: *Tty) !u8 {
     }
 }
 
-pub fn inputReady(self: *Tty, timeout: isize, return_on_signal: bool) !bool {
-    var fds = [_]std.os.pollfd{.{ .fd = self.fdin, .events = std.os.POLL.IN, .revents = 0 }};
-    var ts = std.os.timespec{
-        .tv_sec = @divTrunc(timeout, 1000),
-        .tv_nsec = @rem(timeout, 1000) * 1000000,
-    };
+pub fn inputReady(self: *Tty, timeout: ?isize, return_on_signal: bool) !bool {
+    var ts = if (timeout) |t| &std.os.timespec{
+        .tv_sec = @divTrunc(t, 1000),
+        .tv_nsec = @rem(t, 1000) * 1000000,
+    } else null;
 
-    var mask = std.os.empty_sigset;
-    if (!return_on_signal) {
-        std.c.sigaddset(&mask, std.os.SIG.WINCH);
+    switch (builtin.os.tag) {
+        .macos, .freebsd, .netbsd, .dragonfly => {
+            var kq = try std.os.kqueue();
+            defer std.os.close(kq);
+            var evlist: [2]std.os.Kevent = undefined;
+            var chlist = try std.BoundedArray(std.os.Kevent, 2).init(0);
+            chlist.append(.{
+                .ident = @intCast(usize, self.fdin),
+                .filter = std.os.system.EVFILT_READ,
+                .flags = std.os.system.EV_ADD,
+                .fflags = std.os.system.NOTE_LOWAT,
+                .data = 1,
+                .udata = 0,
+            }) catch unreachable;
+            if (return_on_signal) {
+                chlist.append(.{
+                    .ident = std.os.SIG.WINCH,
+                    .filter = std.os.system.EVFILT_SIGNAL,
+                    .flags = std.os.system.EV_ADD | std.os.system.EV_ONESHOT | std.os.system.EV_CLEAR,
+                    .fflags = 0,
+                    .data = 0,
+                    .udata = 0,
+                }) catch unreachable;
+            }
+            _ = try std.os.kevent(kq, chlist.slice(), &evlist, ts);
+            for (evlist) |ev| {
+                if (ev.filter == std.os.system.EVFILT_READ) {
+                    if (ev.flags & std.os.system.EV_ERROR != 0) {
+                        std.debug.print("kevent error: {s}\n", .{@tagName(std.os.errno(ev.data))});
+                        std.process.exit(1);
+                    } else {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        },
+        .linux => {
+            // TODO
+        },
+        else => unreachable,
     }
 
-    if (std.os.ppoll(&fds, &ts, &mask)) |rc| {
-        return rc > 0;
-    } else |err| switch (err) {
-        error.SignalInterrupt => return false,
-        else => return err,
-    }
-}
-
-fn sgr(self: *Tty, code: i32) void {
-    self.printf("\x1b[{d}m", .{code});
+    return false;
 }

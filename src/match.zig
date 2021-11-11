@@ -70,8 +70,8 @@ fn allocNSlices(comptime T: type, allocator: *std.mem.Allocator, comptime N: usi
     std.debug.assert(left.len == 0);
 }
 
-fn freeNSlices(comptime T: type, allocator: *std.mem.Allocator, comptime N: usize, slices: *const[N][]T) void {
-    const whole_len = slices[0].ptr[0 .. N*slices[0].len];
+fn freeNSlices(comptime T: type, allocator: *std.mem.Allocator, comptime N: usize, slices: *const [N][]T) void {
+    const whole_len = slices[0].ptr[0 .. N * slices[0].len];
     allocator.free(whole_len);
 }
 
@@ -116,17 +116,17 @@ pub const Match = struct {
                 var score: Score = SCORE_MIN;
                 if (i == 0) {
                     score = (@intToFloat(f64, j) * config.SCORE_GAP_LEADING) + self.bonus[j];
-                } else if (j != 0) {
+                } else if (j > 0) {
                     score = std.math.max(last_M[j - 1] + self.bonus[j], last_D[j - 1] + config.SCORE_MATCH_CONSECUTIVE);
                 }
 
                 curr_D[j] = score;
-                curr_M[j] = prev_score;
                 prev_score = std.math.max(score, prev_score + gap_score);
+                curr_M[j] = prev_score;
             } else {
                 curr_D[j] = SCORE_MIN;
-                curr_M[j] = prev_score;
                 prev_score = prev_score + gap_score;
+                curr_M[j] = prev_score;
             }
         }
     }
@@ -174,14 +174,13 @@ pub fn match(needle: []const u8, haystack: []const u8) Score {
     return last_M[m - 1];
 }
 
-pub fn matchPositions(allocator: *std.mem.Allocator, needle: []const u8, haystack: []const u8, positions: ?[]isize) Score {
+pub fn matchPositions(allocator: *std.mem.Allocator, needle: []const u8, haystack: []const u8, positions: ?[]usize) Score {
     if (needle.len == 0) {
         return SCORE_MIN;
     }
 
-    var this_match = Match.init(needle, haystack);
-    var n = this_match.needle.len;
-    var m = this_match.haystack.len;
+    var n = needle.len;
+    var m = haystack.len;
 
     if (m > MAX_LEN or n > m) {
         // Unreasonably large candidate: return no score
@@ -195,29 +194,28 @@ pub fn matchPositions(allocator: *std.mem.Allocator, needle: []const u8, haystac
         // matches needle, if the lengths of the strings are equal the
         // strings themselves must also be equal (ignoring case).
         if (positions) |_| {
-            for (this_match.needle) |_, i| {
-                positions.?[i] = @intCast(isize, i);
+            for (needle) |_, i| {
+                positions.?[i] = i;
             }
         }
         return SCORE_MAX;
     }
 
-    var D: [MAX_LEN][]Score = undefined;
-    allocNSlices(Score, allocator, MAX_LEN, &D, n);
-    defer freeNSlices(Score, allocator, MAX_LEN, &D);
+    var D = allocator.alloc([MAX_LEN]Score, n) catch unreachable;
+    defer allocator.free(D);
 
-    var M: [MAX_LEN][]Score = undefined;
-    allocNSlices(Score, allocator, MAX_LEN, &M, n);
-    defer freeNSlices(Score, allocator, MAX_LEN, &M);
+    var M = allocator.alloc([MAX_LEN]Score, n) catch unreachable;
+    defer allocator.free(M);
 
     var last_D: []Score = undefined;
     var last_M: []Score = undefined;
     var curr_D: []Score = undefined;
     var curr_M: []Score = undefined;
 
+    var this_match = Match.init(needle, haystack);
     for (needle) |_, i| {
-        curr_D = D[i];
-        curr_M = M[i];
+        curr_D = &D[i];
+        curr_M = &M[i];
 
         this_match.matchRow(i, curr_D, curr_M, last_D, last_M);
 
@@ -227,23 +225,26 @@ pub fn matchPositions(allocator: *std.mem.Allocator, needle: []const u8, haystac
 
     if (positions) |_| {
         var match_required = false;
-        var i: usize = n - 1;
-        var j: usize = m - 1;
-        while (i >= 0) : (i -= 1) {
-            while (j >= 0) : (j -= 1) {
+        var i: usize = n;
+        var j: usize = m;
+        outer: while (i > 0) {
+            i -= 1;
+            while (j > 0) : (j -= 1) {
+                const jj = j - 1;
                 // There may be multiple paths which result in the optimal
                 // weight.
                 //
                 // For simplicity, we will pick the first one we encounter,
                 // the latest in the candidate string.
-                if (D[i][j] != SCORE_MIN and
-                    (match_required or D[i][j] == M[i][j]))
+                if (D[i][jj] != SCORE_MIN and
+                    (match_required or D[i][jj] == M[i][jj]))
                 {
                     // If this score was determined using
                     // SCORE_MATCH_CONSECUTIVE, the previous character MUST
                     // be a match
-                    match_required = (i != 0) and (j != 0) and M[i][j] == D[i - 1][j - 1] + config.SCORE_MATCH_CONSECUTIVE;
-                    positions.?[i] = @intCast(isize, j);
+                    match_required = (i != 0) and (jj != 0) and M[i][jj] == D[i - 1][jj - 1] + config.SCORE_MATCH_CONSECUTIVE;
+                    positions.?[i] = jj;
+                    if (jj == 0) break :outer;
                     j -= 1;
                     break;
                 }

@@ -54,6 +54,18 @@ pub fn size(self: *Choices) usize {
     return self.strings.items.len;
 }
 
+pub fn next(self: *Choices) void {
+    if (self.results.items.len > 0) {
+        self.selection = (self.selection + 1) % self.results.items.len;
+    }
+}
+
+pub fn prev(self: *Choices) void {
+    if (self.results.items.len > 0) {
+        self.selection = (self.selection + self.results.items.len - 1) % self.results.items.len;
+    }
+}
+
 pub fn read(self: *Choices, input_delimiter: u8) !void {
     var buffer = try std.io.getStdIn().reader().readAllAlloc(self.allocator, std.math.maxInt(usize));
     defer self.allocator.free(buffer);
@@ -101,7 +113,11 @@ pub fn search(self: *Choices, query: []const u8) !void {
     self.results = workers[0].results;
 }
 
-pub fn searchWorker(worker: *Worker) void {
+pub fn getResult(self: *Choices, i: usize) ?ScoredResult {
+    return if (i < self.results.items.len) self.results.items[i] else null;
+}
+
+fn searchWorker(worker: *Worker) void {
     var job = worker.job;
     const choices = job.choices;
     var results = &worker.results;

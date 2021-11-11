@@ -1,4 +1,5 @@
 const std = @import("std");
+const stdout = std.io.getStdOut().writer();
 
 const Tty = @import("Tty.zig");
 const Choices = @import("Choices.zig");
@@ -34,7 +35,7 @@ cursor: usize = 0,
 ambiguous_key_pending: bool = false,
 input: std.BoundedArray(u8, 32) = .{ .buffer = undefined },
 
-exit: i32 = -1,
+exit: ?u8 = null,
 
 pub fn init(allocator: *std.mem.Allocator, tty: *Tty, choices: *Choices, options: *Options) !TtyInterface {
     var self = TtyInterface{
@@ -50,24 +51,24 @@ pub fn init(allocator: *std.mem.Allocator, tty: *Tty, choices: *Choices, options
 
     self.cursor = self.search.len;
 
-    try self.update();
+    try self.updateSearch();
 
     return self;
 }
 
-pub fn run(self: *TtyInterface) !i32 {
+pub fn run(self: *TtyInterface) !u8 {
     try self.draw();
     while (true) {
         while (true) {
-            while (!(try self.tty.inputReady(-1, true))) {
+            while (!(try self.tty.inputReady(null, true))) {
                 try self.draw();
             }
 
             var s = try self.tty.getChar();
             try self.handleInput(&[_]u8{s}, false);
 
-            if (self.exit >= 0) {
-                return self.exit;
+            if (self.exit) |rc| {
+                return rc;
             }
 
             try self.draw();
@@ -79,31 +80,37 @@ pub fn run(self: *TtyInterface) !i32 {
 
         if (self.ambiguous_key_pending) {
             try self.handleInput("", true);
-            if (self.exit >= 0) {
-                return self.exit;
+            if (self.exit) |rc| {
+                return rc;
             }
         }
 
         try self.update();
     }
 
-    return self.exit;
+    return self.exit orelse unreachable;
 }
 
 fn update(self: *TtyInterface) !void {
+    if (!std.mem.eql(u8, self.last_search.slice(), self.search.slice())) {
+        try self.updateSearch();
+        try self.draw();
+    }
+}
+
+fn updateSearch(self: *TtyInterface) !void {
     try self.choices.search(self.search.constSlice());
     try self.last_search.replaceRange(0, self.last_search.len, self.search.constSlice());
 }
 
 fn draw(self: *TtyInterface) !void {
-    var tty = self.tty;
-    var choices = self.choices;
-    var options = self.options;
-    var num_lines = options.num_lines;
+    const tty = self.tty;
+    const choices = self.choices;
+    const options = self.options;
+    const num_lines = options.num_lines;
     var start: usize = 0;
-    var num_choices = choices.size();
-    var available = choices.results.items.len;
-    var current_selection = choices.selection;
+    const available = choices.results.items.len;
+    const current_selection = choices.selection;
     if (current_selection + options.scrolloff >= num_lines) {
         start = current_selection + options.scrolloff - num_lines + 1;
         if (start + num_lines >= available and available > 0) {
@@ -112,11 +119,11 @@ fn draw(self: *TtyInterface) !void {
     }
 
     tty.setCol(0);
-    tty.printf("{s}{s}", .{ options.prompt, self.search });
+    tty.printf("{s}{s}", .{ options.prompt, self.search.constSlice() });
     tty.clearLine();
 
     if (options.show_info) {
-        tty.printf("\n[{d}/{d}]", .{ available, num_choices });
+        tty.printf("\n[{d}/{d}]", .{ available, choices.size() });
         tty.clearLine();
     }
 
@@ -124,9 +131,8 @@ fn draw(self: *TtyInterface) !void {
     while (i < start + num_lines) : (i += 1) {
         tty.printf("\n", .{});
         tty.clearLine();
-        if (i < num_choices) {
-            const choice = choices.strings.items[i];
-            self.drawMatch(choice, i == current_selection);
+        if (choices.getResult(i)) |result| {
+            self.drawMatch(result.str, i == current_selection);
         }
     }
 
@@ -136,22 +142,19 @@ fn draw(self: *TtyInterface) !void {
 
     tty.setCol(0);
     _ = try tty.buffered_writer.writer().write(options.prompt);
-    i = 0;
-    while (i < self.cursor) : (i += 1) {
-        _ = try tty.buffered_writer.writer().writeByte(self.search.get(i));
-    }
+    _ = try tty.buffered_writer.writer().write(self.search.slice()[0..self.cursor]);
     tty.flush();
 }
 
 fn drawMatch(self: *TtyInterface, choice: []const u8, selected: bool) void {
-    var tty = self.tty;
-    var options = self.options;
-    var search = self.search;
-    var n = search.len;
-    var positions: [match.MAX_LEN]isize = undefined;
+    const tty = self.tty;
+    const options = self.options;
+    const search = self.search;
+    const n = search.len;
+    var positions: [match.MAX_LEN]usize = undefined;
     var i: usize = 0;
     while (i < n + 1 and i < match.MAX_LEN) : (i += 1) {
-        positions[i] = -1;
+        positions[i] = std.math.maxInt(usize);
     }
 
     var score = match.matchPositions(self.allocator, search.constSlice(), choice, &positions);
@@ -192,13 +195,74 @@ fn drawMatch(self: *TtyInterface, choice: []const u8, selected: bool) void {
     tty.setNormal();
 }
 
+fn clear(self: *TtyInterface) void {
+    var tty = self.tty;
+    tty.setCol(0);
+    var line: usize = 0;
+    while (line < self.options.num_lines + @as(usize, if (self.options.show_info) 1 else 0)) : (line += 1) {
+        tty.newline();
+    }
+    tty.clearLine();
+    if (self.options.num_lines > 0) {
+        tty.moveUp(line);
+    }
+    tty.flush();
+}
+
 const Action = struct {
-    fn exit(_: *TtyInterface) void {}
+    fn exit(tty_interface: *TtyInterface) !void {
+        tty_interface.clear();
+        tty_interface.tty.close();
+        tty_interface.exit = 1;
+    }
+
+    fn delChar(tty_interface: *TtyInterface) !void {
+        if (tty_interface.cursor == 0) {
+            return;
+        }
+
+        var search = tty_interface.search.slice();
+        while (tty_interface.cursor > 0) {
+            tty_interface.cursor -= 1;
+            _ = tty_interface.search.orderedRemove(tty_interface.cursor);
+            if (isBoundary(search[tty_interface.cursor])) break;
+        }
+
+        // const len = search.len - cursor + 1;
+        // tty_interface.search.replaceRange(tty_interface.cursor, len, search[cursor .. cursor + len]) catch unreachable;
+    }
+
+    fn emit(tty_interface: *TtyInterface) !void {
+        try tty_interface.update();
+        tty_interface.clear();
+        tty_interface.tty.close();
+
+        const choices = tty_interface.choices;
+        if (choices.selection < choices.results.items.len) {
+            const selection = choices.results.items[choices.selection];
+            try stdout.print("{s}\n", .{selection.str});
+        } else {
+            // No match, output the query instead
+            try stdout.print("{s}\n", .{tty_interface.search.slice()});
+        }
+
+        tty_interface.exit = 0;
+    }
+
+    fn next(tty_interface: *TtyInterface) !void {
+        try tty_interface.update();
+        tty_interface.choices.next();
+    }
+
+    fn prev(tty_interface: *TtyInterface) !void {
+        try tty_interface.update();
+        tty_interface.choices.prev();
+    }
 };
 
 const KeyBinding = struct {
     key: []const u8,
-    action: fn (tty_interface: *TtyInterface) void,
+    action: fn (tty_interface: *TtyInterface) anyerror!void,
 };
 
 fn keyCtrl(key: u8) []const u8 {
@@ -206,11 +270,23 @@ fn keyCtrl(key: u8) []const u8 {
 }
 
 const keybindings = [_]KeyBinding{
-    .{ .key = "\x1b", .action = Action.exit },
+    .{ .key = "\x1b", .action = Action.exit }, // ESC
+    .{ .key = "\x7f", .action = Action.delChar }, // DEL
+    .{ .key = keyCtrl('H'), .action = Action.delChar }, // Backspace
+    .{ .key = keyCtrl('C'), .action = Action.exit },
+    .{ .key = keyCtrl('D'), .action = Action.exit },
+    .{ .key = keyCtrl('G'), .action = Action.exit },
+    .{ .key = keyCtrl('M'), .action = Action.emit },
+    .{ .key = keyCtrl('N'), .action = Action.next },
+    .{ .key = keyCtrl('P'), .action = Action.prev },
 };
 
 fn isPrintOrUnicode(c: u8) bool {
     return std.ascii.isPrint(c) or (c & (1 << 7)) != 0;
+}
+
+fn isBoundary(c: u8) bool {
+    return (~c & (1 << 7)) != 0 or (c & (1 << 6)) != 0;
 }
 
 fn handleInput(self: *TtyInterface, s: []const u8, handle_ambiguous_key: bool) !void {
@@ -224,6 +300,7 @@ fn handleInput(self: *TtyInterface, s: []const u8, handle_ambiguous_key: bool) !
     for (keybindings) |k| {
         if (std.mem.eql(u8, self.input.slice(), k.key)) {
             found_keybinding = k;
+            break;
         } else if (std.mem.eql(u8, self.input.slice(), k.key[0..self.input.len])) {
             in_middle = true;
         }
@@ -232,7 +309,7 @@ fn handleInput(self: *TtyInterface, s: []const u8, handle_ambiguous_key: bool) !
     // If we have an unambiguous keybinding, run it.
     if (found_keybinding) |keybinding| {
         if (!in_middle or handle_ambiguous_key) {
-            keybinding.action(self);
+            try keybinding.action(self);
             self.input.len = 0;
             return;
         }
@@ -253,7 +330,7 @@ fn handleInput(self: *TtyInterface, s: []const u8, handle_ambiguous_key: bool) !
     // No matching keybinding, add to search
     for (self.input.constSlice()) |c| {
         if (isPrintOrUnicode(c)) {
-            try self.search.insert(self.cursor, c);
+            try self.search.insertSlice(self.cursor, &[_]u8{c});
             self.cursor += 1;
         }
     }
