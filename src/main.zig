@@ -1,10 +1,10 @@
 const std = @import("std");
 const stdout = std.io.getStdOut().writer();
 
-const Options = @import("options.zig");
-const Choices = @import("choices.zig");
-const Tty = @import("tty.zig");
-const TtyInterface = @import("tty/interface.zig");
+const Options = @import("Options.zig");
+const Choices = @import("Choices.zig");
+const Tty = @import("Tty.zig");
+const TtyInterface = @import("TtyInterface.zig");
 
 pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};

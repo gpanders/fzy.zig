@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const match = @import("match.zig");
-const Options = @import("options.zig");
+const Options = @import("Options.zig");
 
 const Choices = @This();
 

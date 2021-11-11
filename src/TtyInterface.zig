@@ -1,10 +1,10 @@
 const std = @import("std");
 
-const Tty = @import("../tty.zig");
-const Choices = @import("../choices.zig");
-const Options = @import("../options.zig");
+const Tty = @import("Tty.zig");
+const Choices = @import("Choices.zig");
+const Options = @import("Options.zig");
 
-const match = @import("../match.zig");
+const match = @import("match.zig");
 
 const config = @cImport({
     @cDefine("COLOR_BLACK", std.fmt.comptimePrint("{d}", .{Tty.COLOR_BLACK}));
