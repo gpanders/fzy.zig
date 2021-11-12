@@ -7,14 +7,10 @@ const Tty = @import("Tty.zig");
 const TtyInterface = @import("TtyInterface.zig");
 
 pub fn main() anyerror!void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer if (gpa.deinit()) {
-        std.debug.print("Leaks were found\n", .{});
-    };
-    // var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    // defer arena.deinit();
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
 
-    var allocator = &gpa.allocator;
+    var allocator = &arena.allocator;
 
     var options = try Options.new();
     var choices = try Choices.init(allocator, options);
