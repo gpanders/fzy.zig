@@ -227,9 +227,28 @@ const Action = struct {
             _ = tty_interface.search.orderedRemove(tty_interface.cursor);
             if (isBoundary(search[tty_interface.cursor])) break;
         }
+    }
 
-        // const len = search.len - cursor + 1;
-        // tty_interface.search.replaceRange(tty_interface.cursor, len, search[cursor .. cursor + len]) catch unreachable;
+    fn delCharOrExit(tty_interface: *TtyInterface) !void {
+        if (tty_interface.cursor < tty_interface.search.len) {
+            _ = tty_interface.search.orderedRemove(tty_interface.cursor);
+        } else if (tty_interface.search.len == 0) {
+            try exit(tty_interface);
+        }
+    }
+
+    fn delWord(tty_interface: *TtyInterface) !void {
+        var search = tty_interface.search.constSlice();
+        var i: usize = tty_interface.cursor;
+        while (i > 0 and std.ascii.isSpace(search[i - 1])) : (i -= 1) {}
+        while (i > 0 and !std.ascii.isSpace(search[i - 1])) : (i -= 1) {}
+        tty_interface.search.len = i;
+        tty_interface.cursor = i;
+    }
+
+    fn delAll(tty_interface: *TtyInterface) !void {
+        tty_interface.search.len = 0;
+        tty_interface.cursor = 0;
     }
 
     fn emit(tty_interface: *TtyInterface) !void {
@@ -258,6 +277,47 @@ const Action = struct {
         try tty_interface.update();
         tty_interface.choices.prev();
     }
+
+    fn beginning(tty_interface: *TtyInterface) !void {
+        tty_interface.cursor = 0;
+    }
+
+    fn end(tty_interface: *TtyInterface) !void {
+        tty_interface.cursor = tty_interface.search.len;
+    }
+
+    fn left(tty_interface: *TtyInterface) !void {
+        if (tty_interface.cursor > 0) {
+            tty_interface.cursor -= 1;
+        }
+    }
+
+    fn right(tty_interface: *TtyInterface) !void {
+        if (tty_interface.cursor < tty_interface.search.len) {
+            tty_interface.cursor += 1;
+        }
+    }
+
+    fn pageUp(tty_interface: *TtyInterface) !void {
+        try tty_interface.update();
+        var choices = tty_interface.choices;
+        var i: usize = 0;
+        while (i < tty_interface.options.num_lines and choices.selection > 0) : (i += 1) {
+            choices.next();
+        }
+    }
+
+    fn pageDown(tty_interface: *TtyInterface) !void {
+        try tty_interface.update();
+        var choices = tty_interface.choices;
+        const available = choices.results.items.len;
+        var i: usize = 0;
+        while (i < tty_interface.options.num_lines and choices.selection < available - 1) : (i += 1) {
+            choices.next();
+        }
+    }
+
+    fn ignore(_: *TtyInterface) !void {}
 };
 
 const KeyBinding = struct {
@@ -272,13 +332,37 @@ fn keyCtrl(key: u8) []const u8 {
 const keybindings = [_]KeyBinding{
     .{ .key = "\x1b", .action = Action.exit }, // ESC
     .{ .key = "\x7f", .action = Action.delChar }, // DEL
-    .{ .key = keyCtrl('H'), .action = Action.delChar }, // Backspace
     .{ .key = keyCtrl('C'), .action = Action.exit },
-    .{ .key = keyCtrl('D'), .action = Action.exit },
+    .{ .key = keyCtrl('D'), .action = Action.delCharOrExit },
     .{ .key = keyCtrl('G'), .action = Action.exit },
     .{ .key = keyCtrl('M'), .action = Action.emit },
     .{ .key = keyCtrl('N'), .action = Action.next },
     .{ .key = keyCtrl('P'), .action = Action.prev },
+    .{ .key = keyCtrl('J'), .action = Action.next },
+    .{ .key = keyCtrl('K'), .action = Action.prev },
+    .{ .key = keyCtrl('H'), .action = Action.delChar }, // Backspace
+    .{ .key = keyCtrl('U'), .action = Action.delAll },
+    .{ .key = keyCtrl('W'), .action = Action.delWord },
+    .{ .key = keyCtrl('A'), .action = Action.beginning },
+    .{ .key = keyCtrl('E'), .action = Action.end },
+    .{ .key = keyCtrl('B'), .action = Action.left },
+    .{ .key = keyCtrl('F'), .action = Action.right },
+    .{ .key = "\x1bOD", .action = Action.left },
+    .{ .key = "\x1b[D", .action = Action.left },
+    .{ .key = "\x1bOC", .action = Action.right },
+    .{ .key = "\x1b[C", .action = Action.right },
+    .{ .key = "\x1b[1~", .action = Action.beginning}, // HOME
+    .{ .key = "\x1b[H", .action = Action.beginning}, // HOME
+    .{ .key = "\x1b[4~", .action = Action.end}, // END
+    .{ .key = "\x1b[F", .action = Action.end}, // END
+    .{ .key = "\x1bOA", .action = Action.prev}, // UP
+    .{ .key = "\x1b[A", .action = Action.prev}, // UP
+    .{ .key = "\x1bOB", .action = Action.next}, // DOWN
+    .{ .key = "\x1b[B", .action = Action.next}, // DOWN
+    .{ .key = "\x1b[5~", .action = Action.pageUp},
+    .{ .key = "\x1b[6~", .action = Action.pageDown},
+    .{ .key = "\x1b[200~", .action = Action.ignore},
+    .{ .key = "\x1b[201~", .action = Action.ignore},
 };
 
 fn isPrintOrUnicode(c: u8) bool {
@@ -300,8 +384,7 @@ fn handleInput(self: *TtyInterface, s: []const u8, handle_ambiguous_key: bool) !
     for (keybindings) |k| {
         if (std.mem.eql(u8, self.input.slice(), k.key)) {
             found_keybinding = k;
-            break;
-        } else if (std.mem.eql(u8, self.input.slice(), k.key[0..self.input.len])) {
+        } else if (std.mem.startsWith(u8, k.key, self.input.slice())) {
             in_middle = true;
         }
     }
