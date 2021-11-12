@@ -195,6 +195,7 @@ pub fn inputReady(self: *Tty, timeout: ?isize, return_on_signal: bool) !bool {
         },
         .linux => {
             // TODO
+            unreachable;
         },
         else => unreachable,
     }
