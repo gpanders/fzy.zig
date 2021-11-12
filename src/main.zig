@@ -16,14 +16,6 @@ pub fn main() anyerror!void {
 
     var allocator = &gpa.allocator;
 
-    // Ignore SIGTTOU for debugging
-    const act = std.os.Sigaction{
-        .handler = .{ .sigaction = std.os.SIG.IGN },
-        .mask = std.os.empty_sigset,
-        .flags = 0,
-    };
-    _ = std.os.sigaction(std.os.SIG.TTOU, &act, null);
-
     var options = try Options.new();
     var choices = try Choices.init(allocator, options);
     defer choices.deinit();
