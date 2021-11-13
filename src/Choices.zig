@@ -29,16 +29,23 @@ const ScoredResult = struct {
 allocator: *std.mem.Allocator,
 strings: std.ArrayList([]const u8),
 results: std.ArrayList(ScoredResult),
+selections: std.StringHashMap(void),
 selection: usize = 0,
 worker_count: usize,
 
 pub fn init(allocator: *std.mem.Allocator, options: Options) !Choices {
     var strings = try std.ArrayList([]const u8).initCapacity(allocator, INITIAL_CHOICE_CAPACITY);
+    errdefer strings.deinit();
+
     return Choices{
         .allocator = allocator,
         .strings = strings,
         .results = std.ArrayList(ScoredResult).init(allocator),
-        .worker_count = if (options.workers > 0) options.workers else std.Thread.getCpuCount() catch unreachable,
+        .selections = std.StringHashMap(void).init(allocator),
+        .worker_count = if (options.workers > 0)
+            options.workers
+        else
+            std.Thread.getCpuCount() catch unreachable,
     };
 }
 
@@ -85,6 +92,15 @@ pub fn read(self: *Choices, input_delimiter: u8) !void {
 pub fn resetSearch(self: *Choices) void {
     self.selection = 0;
     self.results.clearAndFree();
+    self.selections.clearAndFree();
+}
+
+pub fn select(self: *Choices, choice: []const u8) !void {
+    try self.selections.put(choice, {});
+}
+
+pub fn deselect(self: *Choices, choice: []const u8) void {
+    _ = self.selections.remove(choice);
 }
 
 pub fn search(self: *Choices, query: []const u8) !void {

@@ -104,6 +104,10 @@ pub fn setUnderline(self: *Tty) void {
     self.sgr(4);
 }
 
+pub fn setBold(self: *Tty) void {
+    self.sgr(1);
+}
+
 pub fn setNormal(self: *Tty) void {
     self.sgr(0);
     self.fg_color = COLOR_NORMAL;

@@ -171,6 +171,10 @@ fn drawMatch(self: *TtyInterface, choice: []const u8, selected: bool) void {
         }
     }
 
+    if (self.choices.selections.contains(choice)) {
+        tty.setBold();
+    }
+
     if (selected) {
         if (config.TTY_SELECTION_UNDERLINE != 0) {
             tty.setUnderline();
@@ -259,12 +263,18 @@ const Action = struct {
         tty_interface.clear();
 
         const choices = tty_interface.choices;
-        if (choices.selection < choices.results.items.len) {
-            const selection = choices.results.items[choices.selection];
-            try stdout.print("{s}\n", .{selection.str});
+        if (choices.selections.count() == 0) {
+            if (choices.getResult(choices.selection)) |selection| {
+                try stdout.print("{s}\n", .{selection.str});
+            } else {
+                // No match, output the query instead
+                try stdout.print("{s}\n", .{tty_interface.search.slice()});
+            }
         } else {
-            // No match, output the query instead
-            try stdout.print("{s}\n", .{tty_interface.search.slice()});
+            var it = choices.selections.keyIterator();
+            while (it.next()) |selection| {
+                try stdout.print("{s}\n", .{selection.*});
+            }
         }
 
         tty_interface.exit = 0;
@@ -319,6 +329,19 @@ const Action = struct {
         }
     }
 
+    fn select(tty_interface: *TtyInterface) !void{
+        try tty_interface.update();
+        const choices = tty_interface.choices;
+        if (choices.getResult(choices.selection)) |selection| {
+            if (choices.selections.contains(selection.str)) {
+                choices.deselect(selection.str);
+            } else {
+                try choices.select(selection.str);
+            }
+            choices.next();
+        }
+    }
+
     fn ignore(_: *TtyInterface) !void {}
 };
 
@@ -339,6 +362,7 @@ const keybindings = [_]KeyBinding{
     .{ .key = keyCtrl('G'), .action = Action.exit },
     .{ .key = keyCtrl('M'), .action = Action.emit },
     .{ .key = keyCtrl('N'), .action = Action.next },
+    .{ .key = keyCtrl('T'), .action = Action.select },
     .{ .key = keyCtrl('P'), .action = Action.prev },
     .{ .key = keyCtrl('J'), .action = Action.next },
     .{ .key = keyCtrl('K'), .action = Action.prev },
