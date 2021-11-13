@@ -73,8 +73,8 @@ pub fn prev(self: *Choices) void {
     }
 }
 
-pub fn read(self: *Choices, input_delimiter: u8) !void {
-    var buffer = try std.io.getStdIn().reader().readAllAlloc(self.allocator, std.math.maxInt(usize));
+pub fn read(self: *Choices, file: std.fs.File, input_delimiter: u8) !void {
+    var buffer = try file.reader().readAllAlloc(self.allocator, std.math.maxInt(usize));
     defer self.allocator.free(buffer);
 
     var it = std.mem.tokenize(u8, buffer, &[_]u8{input_delimiter});

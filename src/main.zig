@@ -1,5 +1,7 @@
 const std = @import("std");
 const stdout = std.io.getStdOut().writer();
+const stderr = std.io.getStdErr().writer();
+const stdin = std.io.getStdIn();
 
 const Options = @import("Options.zig");
 const Choices = @import("Choices.zig");
@@ -16,9 +18,22 @@ pub fn main() anyerror!u8 {
     var choices = try Choices.init(allocator, options);
     defer choices.deinit();
 
+    var file = if (options.input_file) |f|
+        std.fs.cwd().openFile(f, .{}) catch |err| switch (err) {
+            error.FileNotFound => {
+                try stderr.print("Input file {s} not found\n", .{f});
+                return 1;
+            },
+            error.PathAlreadyExists => unreachable,
+            else => return err,
+        }
+    else
+        stdin;
+    defer if (options.input_file) |_| file.close();
+
     if (options.benchmark > 0) {
         if (options.filter) |filter| {
-            try choices.read(options.input_delimiter);
+            try choices.read(file, options.input_delimiter);
             var i: usize = 0;
             while (i < options.benchmark) : (i += 1) {
                 try choices.search(filter);
@@ -28,7 +43,7 @@ pub fn main() anyerror!u8 {
             return 1;
         }
     } else if (options.filter) |filter| {
-        try choices.read(options.input_delimiter);
+        try choices.read(file, options.input_delimiter);
         try choices.search(filter);
         for (choices.results.items) |result| {
             if (options.show_scores) {
@@ -37,14 +52,14 @@ pub fn main() anyerror!u8 {
             stdout.print("{s}\n", .{ result.str }) catch unreachable;
         }
     } else {
-        if (std.io.getStdIn().isTty()) {
-            try choices.read(options.input_delimiter);
+        if (stdin.isTty()) {
+            try choices.read(file, options.input_delimiter);
         }
 
         var tty = try Tty.init(options.tty_filename);
 
-        if (!std.io.getStdIn().isTty()) {
-            try choices.read(options.input_delimiter);
+        if (!stdin.isTty()) {
+            try choices.read(file, options.input_delimiter);
         }
 
         if (options.num_lines > choices.size()) {

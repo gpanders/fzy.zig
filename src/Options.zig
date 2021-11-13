@@ -7,15 +7,16 @@ const config = @cImport(@cInclude("config.h"));
 
 const usage_str =
     \\Usage: fzy [OPTION]...
-    \\ -l, --lines=LINES        Specify how many lines of results to show (default 10)
-    \\ -p, --prompt=PROMPT      Input prompt (default '> ')
-    \\ -q, --query=QUERY        Use QUERY as the initial search string
-    \\ -e, --show-matches=QUERY Output the sorted matches of QUERY
+    \\ -l, --lines LINES        Specify how many lines of results to show (default 10)
+    \\ -p, --prompt PROMPT      Input prompt (default '> ')
+    \\ -q, --query QUERY        Use QUERY as the initial search string
+    \\ -e, --show-matches QUERY Output the sorted matches of QUERY
     \\ -t, --tty=TTY            Specify file to use as TTY device (default /dev/tty)
     \\ -s, --show-scores        Show the scores of each match
     \\ -0, --read-null          Read input delimited by ASCII NUL characters
-    \\ -j, --workers=NUM        Use NUM workers for searching. (default is # of CPUs)
+    \\ -j, --workers NUM        Use NUM workers for searching. (default is # of CPUs)
     \\ -i, --show-info          Show selection info line
+    \\ -f, --file FILE          Read choices from FILE insted of stdin
     \\ -h, --help               Display this help and exit
     \\ -v, --version            Output version information and exit
     \\
@@ -36,23 +37,25 @@ prompt: []const u8 = config.DEFAULT_PROMPT,
 workers: usize = config.DEFAULT_WORKERS,
 input_delimiter: u8 = '\n',
 show_info: bool = config.DEFAULT_SHOW_INFO != 0,
+input_file: ?[]const u8 = null,
 
 pub fn new() !Options {
     var options = Options{};
 
     const params = comptime [_]clap.Param(clap.Help) {
-        clap.parseParam("-h, --help                 Display this help and exit") catch unreachable,
-        clap.parseParam("-l, --lines <LINES>        Specify how many lines of results to show (default 10)") catch unreachable,
-        clap.parseParam("-p, --prompt <PROMPT>      Input prompt (default '> ')") catch unreachable,
-        clap.parseParam("-q, --query <QUERY>        Use QUERY as the initial search string") catch unreachable,
-        clap.parseParam("-e, --show-matches <QUERY> Output the sorted matches of QUERY") catch unreachable,
-        clap.parseParam("-t, --tty <TTY>            Specify file to use as TTY device (default /dev/tty)") catch unreachable,
-        clap.parseParam("-s, --show-scores          Show the scores of each match") catch unreachable,
-        clap.parseParam("-0, --read-null            Read input delimited by ASCII NUL characters") catch unreachable,
-        clap.parseParam("-j, --workers <NUM>        Use NUM workers for searching (default is # of CPUs)") catch unreachable,
+        clap.parseParam("-h, --help") catch unreachable,
+        clap.parseParam("-l, --lines <LINES>") catch unreachable,
+        clap.parseParam("-p, --prompt <PROMPT>") catch unreachable,
+        clap.parseParam("-q, --query <QUERY>") catch unreachable,
+        clap.parseParam("-e, --show-matches <QUERY>") catch unreachable,
+        clap.parseParam("-t, --tty <TTY>") catch unreachable,
+        clap.parseParam("-s, --show-scores") catch unreachable,
+        clap.parseParam("-0, --read-null") catch unreachable,
+        clap.parseParam("-j, --workers <NUM>") catch unreachable,
         clap.parseParam("-b, --benchmark <NUM>") catch unreachable,
-        clap.parseParam("-i, --show-info            Show selection into line") catch unreachable,
-        clap.parseParam("-v, --version              Output version information and exit") catch unreachable,
+        clap.parseParam("-i, --show-info") catch unreachable,
+        clap.parseParam("-f, --file <FILE>") catch unreachable,
+        clap.parseParam("-v, --version") catch unreachable,
     };
 
     var diag = clap.Diagnostic{};
@@ -112,6 +115,10 @@ pub fn new() !Options {
             usage();
             std.process.exit(1);
         };
+    }
+
+    if (args.option("--file")) |f| {
+        options.input_file = f;
     }
 
     return options;
