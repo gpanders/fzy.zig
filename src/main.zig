@@ -6,7 +6,7 @@ const Choices = @import("Choices.zig");
 const Tty = @import("Tty.zig");
 const TtyInterface = @import("TtyInterface.zig");
 
-pub fn main() anyerror!void {
+pub fn main() anyerror!u8 {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
@@ -25,7 +25,7 @@ pub fn main() anyerror!void {
             }
         } else {
             std.debug.print("Must specify -e/--show-matches with --benchmark\n", .{});
-            std.process.exit(1);
+            return 1;
         }
     } else if (options.filter) |filter| {
         try choices.read(options.input_delimiter);
@@ -60,7 +60,9 @@ pub fn main() anyerror!void {
         defer tty_interface.deinit();
 
         if (tty_interface.run()) |rc| {
-            std.process.exit(rc);
+            return rc;
         } else |err| return err;
     }
+
+    return 0;
 }

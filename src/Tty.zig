@@ -20,7 +20,7 @@ pub const COLOR_WHITE = 7;
 pub const COLOR_NORMAL = 9;
 
 fdin: i32,
-fout: *std.fs.File,
+fout: std.fs.File,
 buffered_writer: std.io.BufferedWriter(4096, std.fs.File.Writer),
 original_termios: std.os.termios,
 fg_color: i32 = 0,
@@ -28,13 +28,9 @@ max_width: usize = 0,
 max_height: usize = 0,
 
 pub fn reset(self: *Tty) void {
-    std.os.tcsetattr(self.fdin, std.os.TCSA.NOW, self.original_termios) catch unreachable;
-}
-
-pub fn close(self: *Tty) void {
-    self.reset();
-    self.fout.close();
-    std.os.close(self.fdin);
+    std.os.tcsetattr(self.fdin, std.os.TCSA.NOW, self.original_termios) catch {
+        std.debug.print("Failed to reset termios attributes\n", .{});
+    };
 }
 
 pub fn init(filename: []const u8) !Tty {
@@ -46,7 +42,7 @@ pub fn init(filename: []const u8) !Tty {
 
     var tty = Tty{
         .fdin = fdin,
-        .fout = &fout,
+        .fout = fout,
         .buffered_writer = std.io.bufferedWriter(fout.writer()),
         .original_termios = try std.os.tcgetattr(fdin),
     };
@@ -62,19 +58,25 @@ pub fn init(filename: []const u8) !Tty {
     tty.getWinSize();
     tty.setNormal();
 
-    const act = std.os.Sigaction{ .handler = .{ .sigaction = std.os.SIG.IGN }, .mask = std.os.empty_sigset, .flags = 0 };
+    const act = std.os.Sigaction{
+        .handler = .{ .sigaction = std.os.SIG.IGN },
+        .mask = std.os.empty_sigset,
+        .flags = 0,
+    };
     _ = std.os.sigaction(std.os.SIG.WINCH, &act, null);
 
     return tty;
 }
 
 pub fn deinit(self: *Tty) void {
-    self.close();
+    self.reset();
+    self.fout.close();
+    std.os.close(self.fdin);
 }
 
 pub fn getWinSize(self: *Tty) void {
     var ws: system.winsize = undefined;
-    if (system.ioctl(self.fout.handle, system.T.IOCGWINSZ, &ws) == -1) {
+    if (system.ioctl(self.fout.handle, system.T.IOCGWINSZ, @ptrToInt(&ws)) == -1) {
         self.max_width = 80;
         self.max_height = 25;
     } else {
@@ -154,7 +156,7 @@ pub fn getChar(self: *Tty) !u8 {
     }
 }
 
-pub fn inputReady(self: *Tty, timeout: ?isize, return_on_signal: bool) !bool {
+pub fn inputReady(self: *Tty, timeout: ?i32, return_on_signal: bool) !bool {
     const ts = if (timeout) |t| &std.os.timespec{
         .tv_sec = @divTrunc(t, 1000),
         .tv_nsec = @rem(t, 1000) * 1000000,
@@ -206,8 +208,30 @@ pub fn inputReady(self: *Tty, timeout: ?isize, return_on_signal: bool) !bool {
             }
         },
         .linux => {
-            // TODO
-            unreachable;
+            const epfd = try std.os.epoll_create1(0);
+            defer std.os.close(epfd);
+
+            {
+                var ev = std.os.linux.epoll_event{
+                    .events = std.os.linux.EPOLL.IN,
+                    .data = .{ .fd = self.fdin },
+                };
+                try std.os.epoll_ctl(epfd, std.os.linux.EPOLL.CTL_ADD, self.fdin, &ev);
+            }
+
+            var events: [1]std.os.linux.epoll_event = undefined;
+            while (true) {
+                const rc = std.os.system.epoll_wait(epfd, &events, 1, timeout orelse -1);
+                switch (std.os.errno(rc)) {
+                    .SUCCESS => for (events) |ev| {
+                        if (ev.data.fd == self.fdin) {
+                            return true;
+                        }
+                    } else return false,
+                    .INTR => if (return_on_signal) return false else continue,
+                    else => unreachable,
+                }
+            }
         },
         .windows => {
             // Help wanted
