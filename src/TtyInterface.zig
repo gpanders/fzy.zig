@@ -56,6 +56,10 @@ pub fn init(allocator: *std.mem.Allocator, tty: *Tty, choices: *Choices, options
     return self;
 }
 
+pub fn deinit(self: *TtyInterface) void {
+    self.tty.deinit();
+}
+
 pub fn run(self: *TtyInterface) !u8 {
     try self.draw();
     while (true) {
@@ -212,7 +216,6 @@ fn clear(self: *TtyInterface) void {
 const Action = struct {
     fn exit(tty_interface: *TtyInterface) !void {
         tty_interface.clear();
-        tty_interface.tty.close();
         tty_interface.exit = 1;
     }
 
@@ -254,7 +257,6 @@ const Action = struct {
     fn emit(tty_interface: *TtyInterface) !void {
         try tty_interface.update();
         tty_interface.clear();
-        tty_interface.tty.close();
 
         const choices = tty_interface.choices;
         if (choices.selection < choices.results.items.len) {

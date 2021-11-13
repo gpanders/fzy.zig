@@ -68,6 +68,10 @@ pub fn init(filename: []const u8) !Tty {
     return tty;
 }
 
+pub fn deinit(self: *Tty) void {
+    self.close();
+}
+
 pub fn getWinSize(self: *Tty) void {
     var ws: system.winsize = undefined;
     if (system.ioctl(self.fout.handle, system.T.IOCGWINSZ, &ws) == -1) {
@@ -151,7 +155,7 @@ pub fn getChar(self: *Tty) !u8 {
 }
 
 pub fn inputReady(self: *Tty, timeout: ?isize, return_on_signal: bool) !bool {
-    var ts = if (timeout) |t| &std.os.timespec{
+    const ts = if (timeout) |t| &std.os.timespec{
         .tv_sec = @divTrunc(t, 1000),
         .tv_nsec = @rem(t, 1000) * 1000000,
     } else null;
@@ -160,41 +164,53 @@ pub fn inputReady(self: *Tty, timeout: ?isize, return_on_signal: bool) !bool {
         .macos, .freebsd, .netbsd, .dragonfly => {
             var kq = try std.os.kqueue();
             defer std.os.close(kq);
-            var evlist: [2]std.os.Kevent = undefined;
-            var chlist = try std.BoundedArray(std.os.Kevent, 2).init(0);
-            chlist.append(.{
+            const chlist: [1]std.os.Kevent = .{.{
                 .ident = @intCast(usize, self.fdin),
                 .filter = std.os.system.EVFILT_READ,
-                .flags = std.os.system.EV_ADD,
+                .flags = std.os.system.EV_ADD | std.os.system.EV_ONESHOT | std.os.system.EV_CLEAR,
                 .fflags = std.os.system.NOTE_LOWAT,
                 .data = 1,
                 .udata = 0,
-            }) catch unreachable;
-            if (return_on_signal) {
-                chlist.append(.{
-                    .ident = std.os.SIG.WINCH,
-                    .filter = std.os.system.EVFILT_SIGNAL,
-                    .flags = std.os.system.EV_ADD | std.os.system.EV_ONESHOT | std.os.system.EV_CLEAR,
-                    .fflags = 0,
-                    .data = 0,
-                    .udata = 0,
-                }) catch unreachable;
-            }
-            _ = try std.os.kevent(kq, chlist.slice(), &evlist, ts);
-            for (evlist) |ev| {
-                if (ev.filter == std.os.system.EVFILT_READ) {
-                    if (ev.flags & std.os.system.EV_ERROR != 0) {
-                        std.debug.print("kevent error: {s}\n", .{@tagName(std.os.errno(ev.data))});
-                        std.process.exit(1);
+            }};
+            var evlist: [1]std.os.Kevent = undefined;
+            // Call kevent directly rather than using the wrapper in std.os so that we can handle
+            // EINTR
+            while (true) {
+                const rc = std.os.system.kevent(kq, &chlist, 1, &evlist, 1, ts);
+                switch (std.os.errno(rc)) {
+                    .SUCCESS => for (evlist) |ev| {
+                        if (ev.filter == std.os.system.EVFILT_READ) {
+                            if (ev.flags & std.os.system.EV_ERROR != 0) {
+                                std.debug.print("kevent error: {s}\n", .{
+                                    @tagName(std.os.errno(ev.data)),
+                                });
+                                return error.InvalidValue;
+                            } else {
+                                return true;
+                            }
+                        }
                     } else {
-                        return true;
-                    }
+                        return false;
+                    },
+                    .INTR => if (return_on_signal) return false else continue,
+                    // Copied from std.os.kevent
+                    .ACCES => return error.AccessDenied,
+                    .FAULT => unreachable,
+                    .BADF => unreachable, // Always a race condition.
+                    .INVAL => unreachable,
+                    .NOENT => return error.EventNotFound,
+                    .NOMEM => return error.SystemResources,
+                    .SRCH => return error.ProcessNotFound,
+                    else => unreachable,
                 }
             }
-            return false;
         },
         .linux => {
             // TODO
+            unreachable;
+        },
+        .windows => {
+            // Help wanted
             unreachable;
         },
         else => unreachable,

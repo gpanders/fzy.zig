@@ -57,6 +57,8 @@ pub fn main() anyerror!void {
         }
 
         var tty_interface = try TtyInterface.init(allocator, &tty, &choices, &options);
+        defer tty_interface.deinit();
+
         if (tty_interface.run()) |rc| {
             std.process.exit(rc);
         } else |err| return err;
