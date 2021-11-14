@@ -20,7 +20,7 @@ const usage_str =
     \\ -h, --help               Display this help and exit
     \\ -v, --version            Output version information and exit
     \\
-    ;
+;
 
 fn usage() void {
     std.debug.print(usage_str, .{});
@@ -42,7 +42,7 @@ input_file: ?[]const u8 = null,
 pub fn new() !Options {
     var options = Options{};
 
-    const params = comptime [_]clap.Param(clap.Help) {
+    const params = comptime [_]clap.Param(clap.Help){
         clap.parseParam("-h, --help") catch unreachable,
         clap.parseParam("-l, --lines <LINES>") catch unreachable,
         clap.parseParam("-p, --prompt <PROMPT>") catch unreachable,

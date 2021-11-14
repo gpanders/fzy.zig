@@ -21,7 +21,7 @@ pub fn main() anyerror!u8 {
         else => blk: {
             arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
             break :blk &arena.?.allocator;
-        }
+        },
     };
     defer {
         if (gpa) |_| _ = gpa.?.deinit();
@@ -61,9 +61,9 @@ pub fn main() anyerror!u8 {
         try choices.search(filter);
         for (choices.results.items) |result| {
             if (options.show_scores) {
-                stdout.print("{}\t", .{ result.score }) catch unreachable;
+                stdout.print("{}\t", .{result.score}) catch unreachable;
             }
-            stdout.print("{s}\n", .{ result.str }) catch unreachable;
+            stdout.print("{s}\n", .{result.str}) catch unreachable;
         }
     } else {
         if (stdin.isTty()) {

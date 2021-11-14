@@ -329,7 +329,7 @@ const Action = struct {
         }
     }
 
-    fn select(tty_interface: *TtyInterface) !void{
+    fn select(tty_interface: *TtyInterface) !void {
         try tty_interface.update();
         const choices = tty_interface.choices;
         if (choices.getResult(choices.selection)) |selection| {
@@ -377,18 +377,18 @@ const keybindings = [_]KeyBinding{
     .{ .key = "\x1b[D", .action = Action.left },
     .{ .key = "\x1bOC", .action = Action.right },
     .{ .key = "\x1b[C", .action = Action.right },
-    .{ .key = "\x1b[1~", .action = Action.beginning}, // HOME
-    .{ .key = "\x1b[H", .action = Action.beginning}, // HOME
-    .{ .key = "\x1b[4~", .action = Action.end}, // END
-    .{ .key = "\x1b[F", .action = Action.end}, // END
-    .{ .key = "\x1bOA", .action = Action.prev}, // UP
-    .{ .key = "\x1b[A", .action = Action.prev}, // UP
-    .{ .key = "\x1bOB", .action = Action.next}, // DOWN
-    .{ .key = "\x1b[B", .action = Action.next}, // DOWN
-    .{ .key = "\x1b[5~", .action = Action.pageUp},
-    .{ .key = "\x1b[6~", .action = Action.pageDown},
-    .{ .key = "\x1b[200~", .action = Action.ignore},
-    .{ .key = "\x1b[201~", .action = Action.ignore},
+    .{ .key = "\x1b[1~", .action = Action.beginning }, // HOME
+    .{ .key = "\x1b[H", .action = Action.beginning }, // HOME
+    .{ .key = "\x1b[4~", .action = Action.end }, // END
+    .{ .key = "\x1b[F", .action = Action.end }, // END
+    .{ .key = "\x1bOA", .action = Action.prev }, // UP
+    .{ .key = "\x1b[A", .action = Action.prev }, // UP
+    .{ .key = "\x1bOB", .action = Action.next }, // DOWN
+    .{ .key = "\x1b[B", .action = Action.next }, // DOWN
+    .{ .key = "\x1b[5~", .action = Action.pageUp },
+    .{ .key = "\x1b[6~", .action = Action.pageDown },
+    .{ .key = "\x1b[200~", .action = Action.ignore },
+    .{ .key = "\x1b[201~", .action = Action.ignore },
 };
 
 fn isPrintOrUnicode(c: u8) bool {

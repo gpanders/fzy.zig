@@ -210,4 +210,3 @@ fn searchWorker(worker: *Worker) !void {
         }.sort);
     }
 }
-

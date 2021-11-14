@@ -233,7 +233,8 @@ pub fn hasMatch(needle: []const u8, haystack: []const u8) bool {
     for (needle) |c| {
         i = if (std.mem.indexOfAnyPos(u8, haystack, i, &[_]u8{ c, std.ascii.toUpper(c) })) |j|
             j + 1
-        else return false;
+        else
+            return false;
     }
 
     return true;
