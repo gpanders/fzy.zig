@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const stdout = std.io.getStdOut().writer();
 const stderr = std.io.getStdErr().writer();
 const stdin = std.io.getStdIn();
@@ -9,10 +10,23 @@ const Tty = @import("Tty.zig");
 const TtyInterface = @import("TtyInterface.zig");
 
 pub fn main() anyerror!u8 {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-
-    var allocator = &arena.allocator;
+    // Use a GeneralPurposeAllocator in Debug builds and an arena allocator in Release builds
+    var gpa: ?std.heap.GeneralPurposeAllocator(.{}) = null;
+    var arena: ?std.heap.ArenaAllocator = null;
+    var allocator = switch (builtin.mode) {
+        .Debug => blk: {
+            gpa = .{};
+            break :blk &gpa.?.allocator;
+        },
+        else => blk: {
+            arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            break :blk &arena.?.allocator;
+        }
+    };
+    defer {
+        if (gpa) |_| _ = gpa.?.deinit();
+        if (arena) |_| arena.?.deinit();
+    }
 
     var options = try Options.new();
     var choices = try Choices.init(allocator, options);
