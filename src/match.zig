@@ -59,65 +59,44 @@ fn computeBonus(last_ch: u8, ch: u8) Score {
     return BONUS_STATES[BONUS_INDEX[ch]][last_ch];
 }
 
-fn allocNSlices(comptime T: type, allocator: *std.mem.Allocator, comptime N: usize, slices: *[N][]T, slice_len: usize) void {
-    const all_items = allocator.alloc(T, N * slice_len) catch unreachable;
-    errdefer allocator.free(all_items);
-    var left = all_items;
-    for (slices) |*item| {
-        item.* = left[0..slice_len];
-        left = left[slice_len..];
-    }
-    std.debug.assert(left.len == 0);
-}
-
-fn freeNSlices(comptime T: type, allocator: *std.mem.Allocator, comptime N: usize, slices: *const [N][]T) void {
-    const whole_len = slices[0].ptr[0 .. N * slices[0].len];
-    allocator.free(whole_len);
-}
+// Lower case versions of needle and haystack. Statically allocated per thread
+threadlocal var match_needle: [MAX_LEN]u8 = undefined;
+threadlocal var match_haystack: [MAX_LEN]u8 = undefined;
+threadlocal var match_bonus: [MAX_LEN]Score = [_]Score{0} ** MAX_LEN;
 
 pub const Match = struct {
-    needle: [MAX_LEN]u8 = undefined,
-    haystack: [MAX_LEN]u8 = undefined,
-    bonus: [MAX_LEN]Score = undefined,
+    needle: []const u8 = undefined,
+    haystack: []const u8 = undefined,
 
-    const Self = @This();
-
-    fn init(needle: []const u8, haystack: []const u8) Self {
-        var self = Self{};
-        _ = std.ascii.lowerString(&self.needle, needle);
-        _ = std.ascii.lowerString(&self.haystack, haystack);
+    fn init(needle: []const u8, haystack: []const u8) Match {
+        var self = Match{};
+        self.needle = std.ascii.lowerString(&match_needle, needle);
+        self.haystack = std.ascii.lowerString(&match_haystack, haystack);
         if (haystack.len <= MAX_LEN and needle.len <= haystack.len) {
             var last_ch: u8 = '/';
-            var i: usize = 0;
-            for (haystack) |c| {
-                self.bonus[i] = computeBonus(last_ch, c);
+            for (haystack) |c, i| {
+                match_bonus[i] = computeBonus(last_ch, c);
                 last_ch = c;
-                i += 1;
             }
-            std.mem.set(Score, self.bonus[i..], 0);
-        } else {
-            std.mem.set(Score, &self.bonus, 0);
         }
 
         return self;
     }
 
-    fn matchRow(self: *Self, row: usize, curr_D: []Score, curr_M: []Score, last_D: []const Score, last_M: []const Score) void {
-        var n = self.needle.len;
-        var m = self.haystack.len;
-        var i = row;
-
+    fn matchRow(self: *Match, row: usize, curr_D: []Score, curr_M: []Score, last_D: []const Score, last_M: []const Score) void {
         var prev_score: Score = SCORE_MIN;
-        var gap_score: Score = if (i == n - 1) config.SCORE_GAP_TRAILING else config.SCORE_GAP_INNER;
+        var gap_score: Score = if (row == self.needle.len - 1)
+            config.SCORE_GAP_TRAILING
+        else
+            config.SCORE_GAP_INNER;
 
-        var j: usize = 0;
-        while (j < m) : (j += 1) {
-            if (self.needle[i] == self.haystack[j]) {
+        for (self.haystack) |h, j| {
+            if (self.needle[row] == h) {
                 var score: Score = SCORE_MIN;
-                if (i == 0) {
-                    score = (@intToFloat(f64, j) * config.SCORE_GAP_LEADING) + self.bonus[j];
+                if (row == 0) {
+                    score = (@intToFloat(f64, j) * config.SCORE_GAP_LEADING) + match_bonus[j];
                 } else if (j > 0) {
-                    score = std.math.max(last_M[j - 1] + self.bonus[j], last_D[j - 1] + config.SCORE_MATCH_CONSECUTIVE);
+                    score = std.math.max(last_M[j - 1] + match_bonus[j], last_D[j - 1] + config.SCORE_MATCH_CONSECUTIVE);
                 }
 
                 curr_D[j] = score;
@@ -137,18 +116,14 @@ pub fn match(needle: []const u8, haystack: []const u8) Score {
         return SCORE_MIN;
     }
 
-    var this_match = Match.init(needle, haystack);
-    var n = this_match.needle.len;
-    var m = this_match.haystack.len;
-
-    if (m > MAX_LEN or n > m) {
+    if (haystack.len > MAX_LEN or needle.len > haystack.len) {
         // Unreasonably large candidate: return no score
         // If it is a valid match it will still be returned, it will
         // just be ranked below any reasonably sized candidates
         return SCORE_MIN;
     }
 
-    if (n == m) {
+    if (needle.len == haystack.len) {
         // Since this method can only be called with a haystack which
         // matches needle, if the lengths of the strings are equal the
         // strings themselves must also be equal (ignoring case).
@@ -164,14 +139,14 @@ pub fn match(needle: []const u8, haystack: []const u8) Score {
     var curr_D: []Score = &D[1];
     var curr_M: []Score = &M[1];
 
-    var i: usize = 0;
-    while (i <= n) : (i += 1) {
+    var this_match = Match.init(needle, haystack);
+    for (needle) |_, i| {
         this_match.matchRow(i, curr_D, curr_M, last_D, last_M);
         std.mem.swap([]Score, &curr_D, &last_D);
         std.mem.swap([]Score, &curr_M, &last_M);
     }
 
-    return last_M[m - 1];
+    return last_M[haystack.len - 1];
 }
 
 pub fn matchPositions(allocator: *std.mem.Allocator, needle: []const u8, haystack: []const u8, positions: ?[]usize) Score {
@@ -179,17 +154,14 @@ pub fn matchPositions(allocator: *std.mem.Allocator, needle: []const u8, haystac
         return SCORE_MIN;
     }
 
-    var n = needle.len;
-    var m = haystack.len;
-
-    if (m > MAX_LEN or n > m) {
+    if (haystack.len > MAX_LEN or needle.len > haystack.len) {
         // Unreasonably large candidate: return no score
         // If it is a valid match it will still be returned, it will
         // just be ranked below any reasonably sized candidates
         return SCORE_MIN;
     }
 
-    if (n == m) {
+    if (needle.len == haystack.len) {
         // Since this method can only be called with a haystack which
         // matches needle, if the lengths of the strings are equal the
         // strings themselves must also be equal (ignoring case).
@@ -201,10 +173,10 @@ pub fn matchPositions(allocator: *std.mem.Allocator, needle: []const u8, haystac
         return SCORE_MAX;
     }
 
-    var D = allocator.alloc([MAX_LEN]Score, n) catch unreachable;
+    var D = allocator.alloc([MAX_LEN]Score, needle.len) catch unreachable;
     defer allocator.free(D);
 
-    var M = allocator.alloc([MAX_LEN]Score, n) catch unreachable;
+    var M = allocator.alloc([MAX_LEN]Score, needle.len) catch unreachable;
     defer allocator.free(M);
 
     var last_D: []Score = undefined;
@@ -225,8 +197,8 @@ pub fn matchPositions(allocator: *std.mem.Allocator, needle: []const u8, haystac
 
     if (positions) |_| {
         var match_required = false;
-        var i: usize = n;
-        var j: usize = m;
+        var i: usize = needle.len;
+        var j: usize = haystack.len;
         outer: while (i > 0) {
             i -= 1;
             while (j > 0) : (j -= 1) {
@@ -252,15 +224,16 @@ pub fn matchPositions(allocator: *std.mem.Allocator, needle: []const u8, haystac
         }
     }
 
-    return M[n - 1][m - 1];
+    return M[needle.len - 1][haystack.len - 1];
 }
 
+// This is the hot loop for matching algorithm. If this can be optimized, everything speeds up.
 pub fn hasMatch(needle: []const u8, haystack: []const u8) bool {
     var i: usize = 0;
     for (needle) |c| {
-        i = std.mem.indexOfScalarPos(u8, haystack, i, c) orelse
-            std.mem.indexOfScalarPos(u8, haystack, i, std.ascii.toUpper(c)) orelse
-            return false;
+        i = if (std.mem.indexOfAnyPos(u8, haystack, i, &[_]u8{ c, std.ascii.toUpper(c) })) |j|
+            j + 1
+        else return false;
     }
 
     return true;
