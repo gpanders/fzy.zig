@@ -82,6 +82,7 @@ pub fn deinit(self: *Choices) void {
     }
     self.allocator.free(self.workers);
     self.strings.deinit();
+    self.selections.deinit();
 }
 
 pub fn size(self: *Choices) usize {
