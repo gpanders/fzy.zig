@@ -17,13 +17,12 @@ $ git clone --recursive https://github.com/gpanders/fzy.zig
 $ zig build
 ```
 
-By default, `fzy.zig` is built in `ReleaseSafe` mode. This will crash the
-program with a (somewhat) useful stack trace if a runtime error occurs. If
-you're feeling brave, you can squeeze out extra performance at the expense of
-runtime safety by building in `ReleaseFast` mode:
+By default, `fzy.zig` is built in `Debug` mode. This is very slow, but will
+display useful error messages if the program misbehaves. If you intend to
+actually use `fzy`, you should compile in `ReleaseSafe` mode:
 
 ```console
-$ zig build -Drelease-fast=true
+$ zig build -Drelease-safe=true
 ```
 
 ## Usage

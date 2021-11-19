@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const system = std.os.system;
+const linux = std.os.linux;
 
 const libc = @cImport({
     @cInclude("stdio.h");
@@ -58,12 +59,11 @@ pub fn init(filename: []const u8) !Tty {
     tty.getWinSize();
     tty.setNormal();
 
-    const act = std.os.Sigaction{
+    _ = std.os.sigaction(std.os.SIG.WINCH, &std.os.Sigaction{
         .handler = .{ .sigaction = std.os.SIG.IGN },
         .mask = std.os.empty_sigset,
         .flags = 0,
-    };
-    _ = std.os.sigaction(std.os.SIG.WINCH, &act, null);
+    }, null);
 
     return tty;
 }
@@ -172,9 +172,9 @@ pub fn inputReady(self: *Tty, timeout: ?i32, return_on_signal: bool) !bool {
             defer std.os.close(kq);
             const chlist: [1]std.os.Kevent = .{.{
                 .ident = @intCast(usize, self.fdin),
-                .filter = std.os.system.EVFILT_READ,
-                .flags = std.os.system.EV_ADD | std.os.system.EV_ONESHOT | std.os.system.EV_CLEAR,
-                .fflags = std.os.system.NOTE_LOWAT,
+                .filter = system.EVFILT_READ,
+                .flags = system.EV_ADD | system.EV_ONESHOT | system.EV_CLEAR,
+                .fflags = system.NOTE_LOWAT,
                 .data = 1,
                 .udata = 0,
             }};
@@ -182,11 +182,11 @@ pub fn inputReady(self: *Tty, timeout: ?i32, return_on_signal: bool) !bool {
             // Call kevent directly rather than using the wrapper in std.os so that we can handle
             // EINTR
             while (true) {
-                const rc = std.os.system.kevent(kq, &chlist, 1, &evlist, 1, ts);
+                const rc = system.kevent(kq, &chlist, 1, &evlist, 1, ts);
                 switch (std.os.errno(rc)) {
                     .SUCCESS => for (evlist) |ev| {
-                        if (ev.filter == std.os.system.EVFILT_READ) {
-                            if (ev.flags & std.os.system.EV_ERROR != 0) {
+                        if (ev.filter == system.EVFILT_READ) {
+                            if (ev.flags & system.EV_ERROR != 0) {
                                 std.debug.print("kevent error: {s}\n", .{
                                     @tagName(std.os.errno(ev.data)),
                                 });
@@ -215,17 +215,14 @@ pub fn inputReady(self: *Tty, timeout: ?i32, return_on_signal: bool) !bool {
             const epfd = try std.os.epoll_create1(0);
             defer std.os.close(epfd);
 
-            {
-                var ev = std.os.linux.epoll_event{
-                    .events = std.os.linux.EPOLL.IN,
-                    .data = .{ .fd = self.fdin },
-                };
-                try std.os.epoll_ctl(epfd, std.os.linux.EPOLL.CTL_ADD, self.fdin, &ev);
-            }
+            try std.os.epoll_ctl(epfd, linux.EPOLL.CTL_ADD, self.fdin, &linux.epoll_event{
+                .events = linux.EPOLL.IN,
+                .data = .{ .fd = self.fdin },
+            });
 
-            var events: [1]std.os.linux.epoll_event = undefined;
+            var events: [1]linux.epoll_event = undefined;
             while (true) {
-                const rc = std.os.system.epoll_wait(epfd, &events, 1, timeout orelse -1);
+                const rc = linux.epoll_wait(epfd, &events, 1, timeout orelse -1);
                 switch (std.os.errno(rc)) {
                     .SUCCESS => for (events) |ev| {
                         if (ev.data.fd == self.fdin) {
