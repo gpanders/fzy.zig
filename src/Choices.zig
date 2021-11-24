@@ -153,6 +153,12 @@ pub fn search(self: *Choices, query: []const u8) !void {
     }
 
     self.workers[0].thread.join();
+
+    std.sort.sort(ScoredResult, self.results.items, {}, struct {
+        fn sort(_: void, a: ScoredResult, b: ScoredResult) bool {
+            return a.score > b.score;
+        }
+    }.sort);
 }
 
 fn searchWorker(worker: *Worker) !void {
@@ -191,21 +197,6 @@ fn searchWorker(worker: *Worker) !void {
 
         workers[next_worker].thread.join();
 
-        try results.appendSlice(workers[next_worker].results.items);
-        std.sort.sort(ScoredResult, results.items, {}, struct {
-            fn sort(_: void, a: ScoredResult, b: ScoredResult) bool {
-                if (a.score == b.score) {
-                    if (@ptrToInt(a.str.ptr) > @ptrToInt(b.str.ptr)) {
-                        return false;
-                    } else {
-                        return true;
-                    }
-                } else if (a.score > b.score) {
-                    return true;
-                } else {
-                    return false;
-                }
-            }
-        }.sort);
+        results.appendSliceAssumeCapacity(workers[next_worker].results.items);
     }
 }
