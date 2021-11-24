@@ -16,8 +16,9 @@ const ResultList = std.ArrayList(ScoredResult);
 
 const SearchJob = struct {
     lock: std.Thread.Mutex = .{},
-    choices: *Choices,
+    choices: []const []const u8,
     search: []const u8,
+    workers: []Worker,
     processed: usize = 0,
 
     const BATCH_SIZE = 512;
@@ -28,8 +29,8 @@ const SearchJob = struct {
 
         start.* = self.processed;
         self.processed += BATCH_SIZE;
-        if (self.processed > self.choices.strings.items.len) {
-            self.processed = self.choices.strings.items.len;
+        if (self.processed > self.choices.len) {
+            self.processed = self.choices.len;
         }
         end.* = self.processed;
     }
@@ -44,31 +45,26 @@ const Worker = struct {
 
 allocator: *std.mem.Allocator,
 strings: std.ArrayList([]const u8),
-results: *ResultList,
+results: ResultList,
 selections: std.StringHashMap(void),
 selection: usize = 0,
-workers: []Worker,
+worker_count: usize = 0,
 
 pub fn init(allocator: *std.mem.Allocator, options: Options) !Choices {
     var strings = try std.ArrayList([]const u8).initCapacity(allocator, INITIAL_CHOICE_CAPACITY);
     errdefer strings.deinit();
 
-    const worker_count = if (options.workers > 0)
+    const worker_count: usize = if (options.workers > 0)
         options.workers
     else
         std.Thread.getCpuCount() catch unreachable;
-    var workers = try allocator.alloc(Worker, worker_count);
-    for (workers) |*w, i| {
-        w.worker_num = i;
-        w.results = ResultList.init(allocator);
-    }
 
     return Choices{
         .allocator = allocator,
         .strings = strings,
-        .results = &workers[0].results,
+        .results = undefined,
         .selections = std.StringHashMap(void).init(allocator),
-        .workers = workers,
+        .worker_count = worker_count,
     };
 }
 
@@ -76,10 +72,7 @@ pub fn deinit(self: *Choices) void {
     for (self.strings.items) |s| {
         self.allocator.free(s);
     }
-    for (self.workers) |w| {
-        w.results.deinit();
-    }
-    self.allocator.free(self.workers);
+    self.results.deinit();
     self.strings.deinit();
     self.selections.deinit();
 }
@@ -118,10 +111,7 @@ pub fn read(self: *Choices, file: std.fs.File, input_delimiter: u8) !void {
 
 pub fn resetSearch(self: *Choices) void {
     self.selection = 0;
-    self.selections.clearAndFree();
-    for (self.workers) |*w| {
-        w.results.clearRetainingCapacity();
-    }
+    self.selections.clearRetainingCapacity();
 }
 
 pub fn select(self: *Choices, choice: []const u8) !void {
@@ -139,33 +129,35 @@ pub fn getResult(self: *Choices, i: usize) ?ScoredResult {
 pub fn search(self: *Choices, query: []const u8) !void {
     self.resetSearch();
 
+    var workers = try self.allocator.alloc(Worker, self.worker_count);
+    defer self.allocator.free(workers);
+
     var job = SearchJob{
         .search = query,
-        .choices = self,
+        .choices = self.strings.items,
+        .workers = workers,
     };
 
-    var i = self.workers.len;
+    var i = self.worker_count;
     while (i > 0) {
         i -= 1;
-        self.workers[i].job = &job;
-        try self.workers[i].results.ensureTotalCapacity(self.strings.items.len);
-        self.workers[i].thread = try std.Thread.spawn(.{}, searchWorker, .{&self.workers[i]});
+        workers[i].job = &job;
+        workers[i].worker_num = i;
+        workers[i].results = ResultList.init(self.allocator);
+        workers[i].thread = try std.Thread.spawn(.{}, searchWorker, .{ self.allocator, &workers[i] });
     }
 
-    self.workers[0].thread.join();
+    workers[0].thread.join();
 
-    std.sort.sort(ScoredResult, self.results.items, {}, struct {
-        fn sort(_: void, a: ScoredResult, b: ScoredResult) bool {
-            return a.score > b.score;
-        }
-    }.sort);
+    self.results = workers[0].results;
 }
 
-fn searchWorker(worker: *Worker) !void {
+fn compareChoices(_: void, a: ScoredResult, b: ScoredResult) bool {
+    return a.score > b.score;
+}
+
+fn searchWorker(allocator: *std.mem.Allocator, worker: *Worker) !void {
     var job = worker.job;
-    var results = &worker.results;
-    const choices = job.choices;
-    var workers = choices.workers;
     var start: usize = undefined;
     var end: usize = undefined;
 
@@ -174,15 +166,17 @@ fn searchWorker(worker: *Worker) !void {
 
         if (start == end) break;
 
-        for (choices.strings.items[start..end]) |item| {
+        for (job.choices[start..end]) |item| {
             if (match.hasMatch(job.search, item)) {
-                results.appendAssumeCapacity(.{
+                try worker.results.append(.{
                     .str = item,
                     .score = match.match(job.search, item),
                 });
             }
         }
     }
+
+    std.sort.sort(ScoredResult, worker.results.items, {}, compareChoices);
 
     var step: u6 = 0;
     while (true) : (step += 1) {
@@ -191,12 +185,38 @@ fn searchWorker(worker: *Worker) !void {
         }
 
         const next_worker = worker.worker_num | (@as(usize, 1) << step);
-        if (next_worker >= choices.workers.len) {
+        if (next_worker >= job.workers.len) {
             break;
         }
 
-        workers[next_worker].thread.join();
+        job.workers[next_worker].thread.join();
 
-        results.appendSliceAssumeCapacity(workers[next_worker].results.items);
+        worker.results = try merge2(allocator, worker.results, job.workers[next_worker].results);
     }
+}
+
+fn merge2(allocator: *std.mem.Allocator, list1: ResultList, list2: ResultList) !ResultList {
+    var result = try ResultList.initCapacity(allocator, list1.items.len + list2.items.len);
+    errdefer result.deinit();
+
+    var slice1 = list1.items;
+    var slice2 = list2.items;
+
+    while (slice1.len > 0 and slice2.len > 0) {
+        if (!compareChoices({}, slice1[0], slice2[0])) {
+            result.appendAssumeCapacity(slice1[0]);
+            slice1 = slice1[1..];
+        } else {
+            result.appendAssumeCapacity(slice2[0]);
+            slice2 = slice2[1..];
+        }
+    }
+
+    result.appendSliceAssumeCapacity(slice1);
+    result.appendSliceAssumeCapacity(slice2);
+
+    list1.deinit();
+    list2.deinit();
+
+    return result;
 }
