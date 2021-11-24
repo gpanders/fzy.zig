@@ -23,7 +23,8 @@ const SearchJob = struct {
     const BATCH_SIZE = 512;
 
     fn getNextBatch(self: *SearchJob, start: *usize, end: *usize) void {
-        var lock = self.lock.acquire();
+        self.lock.lock();
+        defer self.lock.unlock();
 
         start.* = self.processed;
         self.processed += BATCH_SIZE;
@@ -31,8 +32,6 @@ const SearchJob = struct {
             self.processed = self.choices.strings.items.len;
         }
         end.* = self.processed;
-
-        lock.release();
     }
 };
 
