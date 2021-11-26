@@ -113,7 +113,7 @@ fn draw(self: *TtyInterface) !void {
     const options = self.options;
     const num_lines = options.num_lines;
     var start: usize = 0;
-    const available = choices.results.items.len;
+    const available = choices.numResults();
     const current_selection = choices.selection;
     if (current_selection + options.scrolloff >= num_lines) {
         start = current_selection + options.scrolloff - num_lines + 1;
@@ -127,7 +127,7 @@ fn draw(self: *TtyInterface) !void {
     tty.clearLine();
 
     if (options.show_info) {
-        tty.printf("\n[{d}/{d}]", .{ available, choices.size() });
+        tty.printf("\n[{d}/{d}]", .{ available, choices.numChoices() });
         tty.clearLine();
     }
 
@@ -167,7 +167,7 @@ fn drawMatch(self: *TtyInterface, choice: []const u8, selected: bool) void {
         if (score == match.SCORE_MIN) {
             tty.printf("(     ) ", .{});
         } else {
-            tty.printf("({:5.2}) ", .{score});
+            tty.printf("({d:.2}) ", .{score});
         }
     }
 
@@ -322,7 +322,7 @@ const Action = struct {
     fn pageDown(tty_interface: *TtyInterface) !void {
         try tty_interface.update();
         var choices = tty_interface.choices;
-        const available = choices.results.items.len;
+        const available = choices.numResults();
         var i: usize = 0;
         while (i < tty_interface.options.num_lines and choices.selection < available - 1) : (i += 1) {
             choices.next();

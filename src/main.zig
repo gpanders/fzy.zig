@@ -59,7 +59,7 @@ pub fn main() anyerror!u8 {
     } else if (options.filter) |filter| {
         try choices.read(file, options.input_delimiter);
         try choices.search(filter);
-        for (choices.results.items) |result| {
+        for (choices.results.?.items) |result| {
             if (options.show_scores) {
                 stdout.print("{}\t", .{result.score}) catch unreachable;
             }
@@ -76,8 +76,8 @@ pub fn main() anyerror!u8 {
             try choices.read(file, options.input_delimiter);
         }
 
-        if (options.num_lines > choices.size()) {
-            options.num_lines = choices.size();
+        if (options.num_lines > choices.numChoices()) {
+            options.num_lines = choices.numChoices();
         }
 
         const num_lines_adjustment: usize = if (options.show_info) 2 else 1;

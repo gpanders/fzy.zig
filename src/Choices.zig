@@ -5,8 +5,6 @@ const Options = @import("Options.zig");
 
 const Choices = @This();
 
-const INITIAL_CHOICE_CAPACITY = 128;
-
 const ScoredResult = struct {
     score: match.Score,
     str: []const u8,
@@ -45,13 +43,13 @@ const Worker = struct {
 
 allocator: *std.mem.Allocator,
 strings: std.ArrayList([]const u8),
-results: ResultList,
+results: ?ResultList = null,
 selections: std.StringHashMap(void),
 selection: usize = 0,
 worker_count: usize = 0,
 
 pub fn init(allocator: *std.mem.Allocator, options: Options) !Choices {
-    var strings = try std.ArrayList([]const u8).initCapacity(allocator, INITIAL_CHOICE_CAPACITY);
+    var strings = std.ArrayList([]const u8).init(allocator);
     errdefer strings.deinit();
 
     const worker_count: usize = if (options.workers > 0)
@@ -62,7 +60,6 @@ pub fn init(allocator: *std.mem.Allocator, options: Options) !Choices {
     return Choices{
         .allocator = allocator,
         .strings = strings,
-        .results = undefined,
         .selections = std.StringHashMap(void).init(allocator),
         .worker_count = worker_count,
     };
@@ -72,25 +69,29 @@ pub fn deinit(self: *Choices) void {
     for (self.strings.items) |s| {
         self.allocator.free(s);
     }
-    self.results.deinit();
+    if (self.results) |results| results.deinit();
     self.strings.deinit();
     self.selections.deinit();
 }
 
-pub fn size(self: *Choices) usize {
+pub fn numChoices(self: Choices) usize {
     return self.strings.items.len;
 }
 
+pub fn numResults(self: Choices) usize {
+    return if (self.results) |r| r.items.len else 0;
+}
+
 pub fn next(self: *Choices) void {
-    if (self.results.items.len > 0) {
-        self.selection = (self.selection + 1) % self.results.items.len;
-    }
+    if (self.results) |results| if (results.items.len > 0) {
+        self.selection = (self.selection + 1) % results.items.len;
+    };
 }
 
 pub fn prev(self: *Choices) void {
-    if (self.results.items.len > 0) {
-        self.selection = (self.selection + self.results.items.len - 1) % self.results.items.len;
-    }
+    if (self.results) |results| if (results.items.len > 0) {
+        self.selection = (self.selection + results.items.len - 1) % results.items.len;
+    };
 }
 
 pub fn read(self: *Choices, file: std.fs.File, input_delimiter: u8) !void {
@@ -101,17 +102,18 @@ pub fn read(self: *Choices, file: std.fs.File, input_delimiter: u8) !void {
     var i: usize = 0;
     while (it.next()) |line| : (i += 1) {
         var new_line = try self.allocator.dupe(u8, line);
-        if (i < self.strings.capacity) {
-            self.strings.appendAssumeCapacity(new_line);
-        } else {
-            try self.strings.append(new_line);
-        }
+        errdefer self.allocator.free(new_line);
+        try self.strings.append(new_line);
     }
 }
 
 pub fn resetSearch(self: *Choices) void {
     self.selection = 0;
     self.selections.clearRetainingCapacity();
+    if (self.results) |results| {
+        results.deinit();
+        self.results = null;
+    }
 }
 
 pub fn select(self: *Choices, choice: []const u8) !void {
@@ -123,7 +125,10 @@ pub fn deselect(self: *Choices, choice: []const u8) void {
 }
 
 pub fn getResult(self: *Choices, i: usize) ?ScoredResult {
-    return if (i < self.results.items.len) self.results.items[i] else null;
+    return if (self.results != null and i < self.results.?.items.len)
+        self.results.?.items[i]
+    else
+        null;
 }
 
 pub fn search(self: *Choices, query: []const u8) !void {
@@ -143,7 +148,7 @@ pub fn search(self: *Choices, query: []const u8) !void {
         i -= 1;
         workers[i].job = &job;
         workers[i].worker_num = i;
-        workers[i].results = ResultList.init(self.allocator);
+        workers[i].results = try ResultList.initCapacity(self.allocator, SearchJob.BATCH_SIZE);
         workers[i].thread = try std.Thread.spawn(.{}, searchWorker, .{ self.allocator, &workers[i] });
     }
 
@@ -196,6 +201,16 @@ fn searchWorker(allocator: *std.mem.Allocator, worker: *Worker) !void {
 }
 
 fn merge2(allocator: *std.mem.Allocator, list1: ResultList, list2: ResultList) !ResultList {
+    if (list2.items.len == 0) {
+        list2.deinit();
+        return list1;
+    }
+
+    if (list1.items.len == 0) {
+        list1.deinit();
+        return list2;
+    }
+
     var result = try ResultList.initCapacity(allocator, list1.items.len + list2.items.len);
     errdefer result.deinit();
 
