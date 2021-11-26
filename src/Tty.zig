@@ -184,7 +184,7 @@ pub fn inputReady(self: *Tty, timeout: ?i32, return_on_signal: bool) !bool {
             while (true) {
                 const rc = system.kevent(kq, &chlist, 1, &evlist, 1, ts);
                 switch (std.os.errno(rc)) {
-                    .SUCCESS => for (evlist) |ev| {
+                    .SUCCESS => for (evlist[0..@intCast(usize, rc)]) |ev| {
                         if (ev.filter == system.EVFILT_READ) {
                             if (ev.flags & system.EV_ERROR != 0) {
                                 std.debug.print("kevent error: {s}\n", .{
