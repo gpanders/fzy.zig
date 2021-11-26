@@ -17,12 +17,27 @@ $ git clone --recursive https://github.com/gpanders/fzy.zig
 $ zig build
 ```
 
+This will build an `fzy` binary in `zig-out/bin/`. To install to a different
+prefix, use the `-p` flag:
+
+```console
+$ zig build -p /usr/local
+```
+
 By default, `fzy.zig` is built in `Debug` mode. This is very slow, but will
 display useful error messages if the program misbehaves. If you intend to
 actually use `fzy`, you should compile in `ReleaseSafe` mode:
 
 ```console
 $ zig build -Drelease-safe=true
+```
+
+`ReleaseSafe` mode is still slower than the original `fzy`. You can compile in
+`ReleastFast` mode to disable all runtime safety checks and enable more
+optimizations:
+
+```console
+$ zig build -Drelease-fast=true
 ```
 
 ## Usage
