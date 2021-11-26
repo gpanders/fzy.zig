@@ -134,6 +134,17 @@ pub fn getResult(self: *Choices, i: usize) ?ScoredResult {
 pub fn search(self: *Choices, query: []const u8) !void {
     self.resetSearch();
 
+    if (query.len == 0) {
+        self.results = try ResultList.initCapacity(self.allocator, self.strings.items.len);
+        for (self.strings.items) |item| {
+            self.results.?.appendAssumeCapacity(.{
+                .str = item,
+                .score = match.SCORE_MIN,
+            });
+        }
+        return;
+    }
+
     var workers = try self.allocator.alloc(Worker, self.worker_count);
     defer self.allocator.free(workers);
 
