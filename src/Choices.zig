@@ -229,7 +229,7 @@ fn merge2(allocator: *std.mem.Allocator, list1: ResultList, list2: ResultList) !
     var slice2 = list2.items;
 
     while (slice1.len > 0 and slice2.len > 0) {
-        if (!compareChoices({}, slice1[0], slice2[0])) {
+        if (compareChoices({}, slice1[0], slice2[0])) {
             result.appendAssumeCapacity(slice1[0]);
             slice1 = slice1[1..];
         } else {
