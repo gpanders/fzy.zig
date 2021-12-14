@@ -16,11 +16,11 @@ pub fn main() anyerror!u8 {
     var allocator = switch (builtin.mode) {
         .Debug => blk: {
             gpa = .{};
-            break :blk &gpa.?.allocator;
+            break :blk gpa.?.allocator();
         },
         else => blk: {
             arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-            break :blk &arena.?.allocator;
+            break :blk arena.?.allocator();
         },
     };
     defer {
@@ -85,7 +85,7 @@ pub fn main() anyerror!u8 {
             options.num_lines = tty.max_height - num_lines_adjustment;
         }
 
-        var tty_interface = try TtyInterface.init(allocator, &tty, &choices, &options);
+        var tty_interface = try TtyInterface.init(allocator, &tty, &choices, options);
         defer tty_interface.deinit();
 
         if (tty_interface.run()) |rc| {

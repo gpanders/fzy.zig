@@ -41,14 +41,14 @@ const Worker = struct {
     results: ResultList,
 };
 
-allocator: *std.mem.Allocator,
+allocator: std.mem.Allocator,
 strings: std.ArrayList([]const u8),
 results: ?ResultList = null,
 selections: std.StringHashMap(void),
 selection: usize = 0,
 worker_count: usize = 0,
 
-pub fn init(allocator: *std.mem.Allocator, options: Options) !Choices {
+pub fn init(allocator: std.mem.Allocator, options: Options) !Choices {
     var strings = std.ArrayList([]const u8).init(allocator);
     errdefer strings.deinit();
 
@@ -124,7 +124,7 @@ pub fn deselect(self: *Choices, choice: []const u8) void {
     _ = self.selections.remove(choice);
 }
 
-pub fn getResult(self: *Choices, i: usize) ?ScoredResult {
+pub fn getResult(self: Choices, i: usize) ?ScoredResult {
     return if (self.results != null and i < self.results.?.items.len)
         self.results.?.items[i]
     else
@@ -172,7 +172,7 @@ fn compareChoices(_: void, a: ScoredResult, b: ScoredResult) bool {
     return a.score > b.score;
 }
 
-fn searchWorker(allocator: *std.mem.Allocator, worker: *Worker) !void {
+fn searchWorker(allocator: std.mem.Allocator, worker: *Worker) !void {
     var job = worker.job;
     var start: usize = undefined;
     var end: usize = undefined;
@@ -211,7 +211,7 @@ fn searchWorker(allocator: *std.mem.Allocator, worker: *Worker) !void {
     }
 }
 
-fn merge2(allocator: *std.mem.Allocator, list1: ResultList, list2: ResultList) !ResultList {
+fn merge2(allocator: std.mem.Allocator, list1: ResultList, list2: ResultList) !ResultList {
     if (list2.items.len == 0) {
         list2.deinit();
         return list1;

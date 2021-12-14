@@ -23,10 +23,10 @@ const TtyInterface = @This();
 
 const SEARCH_SIZE_MAX = 4096;
 
-allocator: *std.mem.Allocator,
+allocator: std.mem.Allocator,
 tty: *Tty,
 choices: *Choices,
-options: *Options,
+options: Options,
 
 search: std.BoundedArray(u8, SEARCH_SIZE_MAX) = .{ .buffer = undefined },
 last_search: std.BoundedArray(u8, SEARCH_SIZE_MAX) = .{ .buffer = undefined },
@@ -37,7 +37,7 @@ input: std.BoundedArray(u8, 32) = .{ .buffer = undefined },
 
 exit: ?u8 = null,
 
-pub fn init(allocator: *std.mem.Allocator, tty: *Tty, choices: *Choices, options: *Options) !TtyInterface {
+pub fn init(allocator: std.mem.Allocator, tty: *Tty, choices: *Choices, options: Options) !TtyInterface {
     var self = TtyInterface{
         .allocator = allocator,
         .tty = tty,

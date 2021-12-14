@@ -149,7 +149,7 @@ pub fn match(needle: []const u8, haystack: []const u8) Score {
     return last_M[haystack.len - 1];
 }
 
-pub fn matchPositions(allocator: *std.mem.Allocator, needle: []const u8, haystack: []const u8, positions: ?[]usize) Score {
+pub fn matchPositions(allocator: std.mem.Allocator, needle: []const u8, haystack: []const u8, positions: ?[]usize) Score {
     if (needle.len == 0) {
         return SCORE_MIN;
     }
