@@ -166,8 +166,10 @@ fn drawMatch(self: *TtyInterface, choice: []const u8, selected: bool) void {
     if (options.show_scores) {
         if (score == match.SCORE_MIN) {
             tty.printf("(     ) ", .{});
+        } else if (score == match.SCORE_MAX) {
+            tty.printf("(exact) ", .{});
         } else {
-            tty.printf("({d:.2}) ", .{score});
+            tty.printf("({d:5.2}) ", .{score});
         }
     }
 
