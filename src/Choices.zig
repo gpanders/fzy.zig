@@ -37,6 +37,7 @@ const SearchJob = struct {
 const Worker = struct {
     thread: std.Thread,
     job: *SearchJob,
+    options: *Options,
     worker_num: usize,
     results: ResultList,
 };
@@ -47,6 +48,7 @@ results: ?ResultList = null,
 selections: std.StringHashMap(void),
 selection: usize = 0,
 worker_count: usize = 0,
+options: Options,
 
 pub fn init(allocator: std.mem.Allocator, options: Options) !Choices {
     var strings = std.ArrayList([]const u8).init(allocator);
@@ -62,6 +64,7 @@ pub fn init(allocator: std.mem.Allocator, options: Options) !Choices {
         .strings = strings,
         .selections = std.StringHashMap(void).init(allocator),
         .worker_count = worker_count,
+        .options = options,
     };
 }
 
@@ -158,6 +161,7 @@ pub fn search(self: *Choices, query: []const u8) !void {
     while (i > 0) {
         i -= 1;
         workers[i].job = &job;
+        workers[i].options = &self.options;
         workers[i].worker_num = i;
         workers[i].results = try ResultList.initCapacity(self.allocator, SearchJob.BATCH_SIZE);
         workers[i].thread = try std.Thread.spawn(.{}, searchWorker, .{ self.allocator, &workers[i] });
@@ -192,7 +196,9 @@ fn searchWorker(allocator: std.mem.Allocator, worker: *Worker) !void {
         }
     }
 
-    std.sort.sort(ScoredResult, worker.results.items, {}, compareChoices);
+    if (worker.options.sort) {
+        std.sort.sort(ScoredResult, worker.results.items, {}, compareChoices);
+    }
 
     var step: u6 = 0;
     while (true) : (step += 1) {
@@ -207,11 +213,11 @@ fn searchWorker(allocator: std.mem.Allocator, worker: *Worker) !void {
 
         job.workers[next_worker].thread.join();
 
-        worker.results = try merge2(allocator, worker.results, job.workers[next_worker].results);
+        worker.results = try merge2(allocator, worker.options.sort, worker.results, job.workers[next_worker].results);
     }
 }
 
-fn merge2(allocator: std.mem.Allocator, list1: ResultList, list2: ResultList) !ResultList {
+fn merge2(allocator: std.mem.Allocator, sort: bool, list1: ResultList, list2: ResultList) !ResultList {
     if (list2.items.len == 0) {
         list2.deinit();
         return list1;
@@ -228,7 +234,7 @@ fn merge2(allocator: std.mem.Allocator, list1: ResultList, list2: ResultList) !R
     var slice1 = list1.items;
     var slice2 = list2.items;
 
-    while (slice1.len > 0 and slice2.len > 0) {
+    while (sort and slice1.len > 0 and slice2.len > 0) {
         if (compareChoices({}, slice1[0], slice2[0])) {
             result.appendAssumeCapacity(slice1[0]);
             slice1 = slice1[1..];
@@ -238,8 +244,8 @@ fn merge2(allocator: std.mem.Allocator, list1: ResultList, list2: ResultList) !R
         }
     }
 
-    result.appendSliceAssumeCapacity(slice1);
     result.appendSliceAssumeCapacity(slice2);
+    result.appendSliceAssumeCapacity(slice1);
 
     list1.deinit();
     list2.deinit();

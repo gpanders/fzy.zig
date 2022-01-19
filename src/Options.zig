@@ -17,6 +17,7 @@ const usage_str =
     \\ -j, --workers NUM        Use NUM workers for searching. (default is # of CPUs)
     \\ -i, --show-info          Show selection info line
     \\ -f, --file FILE          Read choices from FILE insted of stdin
+    \\ -n, --no-sort            Do not sort matches
     \\ -h, --help               Display this help and exit
     \\ -v, --version            Output version information and exit
     \\
@@ -38,6 +39,7 @@ workers: usize = config.DEFAULT_WORKERS,
 input_delimiter: u8 = '\n',
 show_info: bool = config.DEFAULT_SHOW_INFO != 0,
 input_file: ?[]const u8 = null,
+sort: bool = true,
 
 pub fn new() !Options {
     var options = Options{};
@@ -55,6 +57,7 @@ pub fn new() !Options {
         clap.parseParam("-b, --benchmark <NUM>") catch unreachable,
         clap.parseParam("-i, --show-info") catch unreachable,
         clap.parseParam("-f, --file <FILE>") catch unreachable,
+        clap.parseParam("-n, --no-sort") catch unreachable,
         clap.parseParam("-v, --version") catch unreachable,
     };
 
@@ -120,6 +123,9 @@ pub fn new() !Options {
     if (args.option("--file")) |f| {
         options.input_file = f;
     }
+
+    if (args.flag("--no-sort"))
+        options.sort = false;
 
     return options;
 }
