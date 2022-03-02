@@ -38,7 +38,7 @@ pub fn init(filename: []const u8) !Tty {
     const fdin = try std.os.open(filename, std.os.O.RDONLY, 0);
     errdefer std.os.close(fdin);
 
-    var fout = try std.fs.openFileAbsolute(filename, .{ .read = false, .write = true });
+    var fout = try std.fs.openFileAbsolute(filename, .{ .mode = .write_only });
     errdefer fout.close();
 
     var tty = Tty{
