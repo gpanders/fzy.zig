@@ -59,7 +59,7 @@ pub fn init(filename: []const u8) !Tty {
     tty.getWinSize();
     tty.setNormal();
 
-    _ = std.os.sigaction(std.os.SIG.WINCH, &std.os.Sigaction{
+    try std.os.sigaction(std.os.SIG.WINCH, &std.os.Sigaction{
         .handler = .{ .sigaction = std.os.SIG.IGN },
         .mask = std.os.empty_sigset,
         .flags = 0,

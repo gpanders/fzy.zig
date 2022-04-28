@@ -11,22 +11,13 @@ const TtyInterface = @import("TtyInterface.zig");
 
 pub fn main() anyerror!u8 {
     // Use a GeneralPurposeAllocator in Debug builds and an arena allocator in Release builds
-    var gpa: ?std.heap.GeneralPurposeAllocator(.{}) = null;
-    var arena: ?std.heap.ArenaAllocator = null;
-    var allocator = switch (builtin.mode) {
-        .Debug => blk: {
-            gpa = .{};
-            break :blk gpa.?.allocator();
-        },
-        else => blk: {
-            arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-            break :blk arena.?.allocator();
-        },
+    var backing_allocator = comptime switch (builtin.mode) {
+        .Debug => std.heap.GeneralPurposeAllocator(.{}){},
+        else => std.heap.ArenaAllocator.init(std.heap.page_allocator),
     };
-    defer {
-        if (gpa) |_| _ = gpa.?.deinit();
-        if (arena) |_| arena.?.deinit();
-    }
+    defer _ = backing_allocator.deinit();
+
+    var allocator = backing_allocator.allocator();
 
     var options = try Options.new();
     var choices = try Choices.init(allocator, options);
