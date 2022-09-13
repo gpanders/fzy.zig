@@ -3,7 +3,7 @@ const std = @import("std");
 const pkgs = struct {
     const clap = std.build.Pkg{
         .name = "clap",
-        .path = .{ .path = "deps/clap/clap.zig" },
+        .source = .{ .path = "deps/clap/clap.zig" },
     };
 };
 

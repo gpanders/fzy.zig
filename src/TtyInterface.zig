@@ -349,10 +349,10 @@ const Action = struct {
 
 const KeyBinding = struct {
     key: []const u8,
-    action: fn (tty_interface: *TtyInterface) anyerror!void,
+    action: *const fn (tty_interface: *TtyInterface) anyerror!void,
 };
 
-fn keyCtrl(key: u8) []const u8 {
+fn keyCtrl(comptime key: u8) []const u8 {
     return &[_]u8{key - '@'};
 }
 

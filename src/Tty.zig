@@ -60,7 +60,7 @@ pub fn init(filename: []const u8) !Tty {
     tty.setNormal();
 
     try std.os.sigaction(std.os.SIG.WINCH, &std.os.Sigaction{
-        .handler = .{ .sigaction = std.os.SIG.IGN },
+        .handler = .{ .handler = std.os.SIG.IGN },
         .mask = std.os.empty_sigset,
         .flags = 0,
     }, null);
