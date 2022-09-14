@@ -10,21 +10,21 @@ pub const SCORE_MAX = std.math.f64_max;
 pub const MAX_LEN = 1024;
 
 const BONUS_INDEX = init: {
-    comptime var table: [256]usize = undefined;
+    var table: [256]usize = undefined;
     std.mem.set(usize, &table, 0);
 
-    comptime var i = 'A';
-    inline while (i <= 'Z') : (i += 1) {
+    var i = 'A';
+    while (i <= 'Z') : (i += 1) {
         table[i] = 2;
     }
 
     i = 'a';
-    inline while (i <= 'z') : (i += 1) {
+    while (i <= 'z') : (i += 1) {
         table[i] = 1;
     }
 
     i = '0';
-    inline while (i <= '9') : (i += 1) {
+    while (i <= '9') : (i += 1) {
         table[i] = 1;
     }
     break :init table;
@@ -35,6 +35,7 @@ const BONUS_STATES = init: {
     for (table) |*sub| {
         std.mem.set(Score, sub, 0);
     }
+
     table[1]['/'] = config.SCORE_MATCH_SLASH;
     table[1]['-'] = config.SCORE_MATCH_WORD;
     table[1]['_'] = config.SCORE_MATCH_WORD;
@@ -48,7 +49,7 @@ const BONUS_STATES = init: {
     table[2]['.'] = config.SCORE_MATCH_DOT;
 
     var i = 'a';
-    inline while (i <= 'z') : (i += 1) {
+    while (i <= 'z') : (i += 1) {
         table[2][i] = config.SCORE_MATCH_CAPITAL;
     }
 
