@@ -51,8 +51,6 @@ pub fn init(allocator: std.mem.Allocator, tty: *Tty, choices: *Choices, options:
 
     self.cursor = self.search.len;
 
-    try self.updateSearch();
-
     return self;
 }
 
@@ -61,24 +59,49 @@ pub fn deinit(self: *TtyInterface) void {
 }
 
 pub fn run(self: *TtyInterface) !u8 {
-    try self.draw();
+    _ = try self.choices.read(4096);
+    try self.update();
     while (true) {
         while (true) {
-            while (!(try self.tty.inputReady(null, true))) {
+            var events = try self.tty.waitForEvent(null, true, self.choices.file);
+            if (events.signal) {
                 try self.draw();
             }
 
-            var s = try self.tty.getChar();
-            try self.handleInput(&[_]u8{s}, false);
-
-            if (self.exit) |rc| {
-                return rc;
+            if (events.input) {
+                const new_candidates = try self.choices.read(4096);
+                if (!events.key) {
+                    // If there is a key event, don't redraw anything because it will just be
+                    // redrawn again in the key event handler
+                    if (new_candidates) {
+                        // When new items are added to the candidate list simply update the total number
+                        // of candidates, but do not re-run the matching algorithm
+                        try self.draw();
+                    } else {
+                        // When the input file is finished being read, re-run the matching algorithm
+                        // against the full list of candidates
+                        try self.update();
+                    }
+                }
             }
 
-            try self.draw();
+            if (events.key) {
+                var s = try self.tty.getChar();
+                try self.handleInput(&[_]u8{s}, false);
 
-            if (!(try self.tty.inputReady(if (self.ambiguous_key_pending) config.KEYTIMEOUT else 0, false))) {
-                break;
+                if (self.exit) |rc| {
+                    return rc;
+                }
+
+                try self.draw();
+
+                if (!(try self.tty.waitForEvent(
+                    if (self.ambiguous_key_pending) config.KEYTIMEOUT else 0,
+                    false,
+                    null,
+                )).key) {
+                    break;
+                }
             }
         }
 
@@ -96,10 +119,8 @@ pub fn run(self: *TtyInterface) !u8 {
 }
 
 fn update(self: *TtyInterface) !void {
-    if (!std.mem.eql(u8, self.last_search.slice(), self.search.slice())) {
-        try self.updateSearch();
-        try self.draw();
-    }
+    try self.updateSearch();
+    try self.draw();
 }
 
 fn updateSearch(self: *TtyInterface) !void {

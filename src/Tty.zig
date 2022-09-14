@@ -160,45 +160,70 @@ pub fn getChar(self: *Tty) !u8 {
     }
 }
 
-pub fn inputReady(self: *Tty, timeout: ?i32, return_on_signal: bool) !bool {
+pub const Events = packed struct(u8) {
+    input: bool = false,
+    key: bool = false,
+    signal: bool = false,
+    _: u5 = 0,
+};
+
+pub fn waitForEvent(self: *Tty, timeout: ?i32, return_on_signal: bool, input: ?std.fs.File) !Events {
     const ts = if (timeout) |t| &std.os.timespec{
         .tv_sec = @divTrunc(t, 1000),
         .tv_nsec = @rem(t, 1000) * 1000000,
     } else null;
 
+    var events = Events{};
     switch (builtin.os.tag) {
         .macos, .freebsd, .netbsd, .dragonfly => {
             var kq = try std.os.kqueue();
             defer std.os.close(kq);
-            const chlist: [1]std.os.Kevent = .{.{
+            const chlist: [2]std.os.Kevent = undefined;
+            var nevents = 1;
+            chlist[0] = .{
                 .ident = @intCast(usize, self.fdin),
                 .filter = system.EVFILT_READ,
                 .flags = system.EV_ADD | system.EV_ONESHOT | system.EV_CLEAR,
                 .fflags = system.NOTE_LOWAT,
                 .data = 1,
                 .udata = 0,
-            }};
-            var evlist: [1]std.os.Kevent = undefined;
+            };
+
+            if (input) |in| {
+                nevents = 2;
+                chlist[1] = .{
+                    .ident = @intCast(usize, in.handle),
+                    .filter = system.EVFILT_READ,
+                    .flags = system.EV_ADD | system.EV_ONESHOT | system.EV_CLEAR,
+                    .fflags = 0,
+                    .data = 0,
+                    .udata = 0,
+                };
+            }
+
+            var evlist: [2]std.os.Kevent = undefined;
             // Call kevent directly rather than using the wrapper in std.os so that we can handle
             // EINTR
             while (true) {
-                const rc = system.kevent(kq, &chlist, 1, &evlist, 1, ts);
+                const rc = system.kevent(kq, &chlist, nevents, &evlist, nevents, ts);
                 switch (std.os.errno(rc)) {
                     .SUCCESS => for (evlist[0..@intCast(usize, rc)]) |ev| {
-                        if (ev.filter == system.EVFILT_READ) {
-                            if (ev.flags & system.EV_ERROR != 0) {
-                                std.debug.print("kevent error: {s}\n", .{
-                                    @tagName(std.os.errno(ev.data)),
-                                });
-                                return error.InvalidValue;
-                            } else {
-                                return true;
-                            }
+                        if (ev.flags & system.EV_ERROR != 0) {
+                            std.debug.print("kevent error: {s}\n", .{
+                                @tagName(std.os.errno(ev.data)),
+                            });
+                            return error.InvalidValue;
+                        } else if (ev.ident == @intCast(usize, self.fdin)) {
+                            events.key = true;
+                        } else if (input != null and ev.ident == @intCast(usize, input.?.handle)) {
+                                events.input = true;
                         }
-                    } else {
-                        return false;
+                        break;
                     },
-                    .INTR => if (return_on_signal) return false else continue,
+                    .INTR => if (return_on_signal) {
+                        events.signal = true;
+                        break;
+                    } else continue,
                     // Copied from std.os.kevent
                     .ACCES => return error.AccessDenied,
                     .FAULT => unreachable,
@@ -215,31 +240,46 @@ pub fn inputReady(self: *Tty, timeout: ?i32, return_on_signal: bool) !bool {
             const epfd = try std.os.epoll_create1(0);
             defer std.os.close(epfd);
 
+            var nevents: u32 = 1;
             try std.os.epoll_ctl(epfd, linux.EPOLL.CTL_ADD, self.fdin, &linux.epoll_event{
                 .events = linux.EPOLL.IN,
                 .data = .{ .fd = self.fdin },
             });
 
-            var events: [1]linux.epoll_event = undefined;
+            if (input) |in| {
+                nevents = 2;
+                try std.os.epoll_ctl(epfd, linux.EPOLL.CTL_ADD, in.handle, &linux.epoll_event{
+                    .events = linux.EPOLL.IN,
+                    .data = .{ .fd = in.handle },
+                });
+            }
+
+            var evs: [2]linux.epoll_event = undefined;
             while (true) {
-                const rc = linux.epoll_wait(epfd, &events, 1, timeout orelse -1);
+                const rc = linux.epoll_wait(epfd, &evs, nevents, timeout orelse -1);
                 switch (std.os.errno(rc)) {
-                    .SUCCESS => for (events) |ev| {
-                        if (ev.data.fd == self.fdin) {
-                            return true;
+                    .SUCCESS => {
+                        for (evs) |ev| {
+                            if (ev.data.fd == self.fdin) {
+                                events.key = true;
+                            } else if (input != null and ev.data.fd == input.?.handle) {
+                                events.input = true;
+                            }
                         }
-                    } else return false,
-                    .INTR => if (return_on_signal) return false else continue,
+                        break;
+                    },
+                    .INTR => if (return_on_signal) {
+                        events.signal = true;
+                        break;
+                    } else continue,
                     else => unreachable,
                 }
             }
         },
-        .windows => {
-            // Help wanted
-            unreachable;
+        else => {
+            @compileError("fzy.zig is not supported on this platform");
         },
-        else => unreachable,
     }
 
-    return false;
+    return events;
 }

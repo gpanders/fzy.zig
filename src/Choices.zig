@@ -50,8 +50,9 @@ selection: usize = 0,
 worker_count: usize = 0,
 options: Options,
 buffer: std.ArrayList(u8),
+file: ?std.fs.File,
 
-pub fn init(allocator: std.mem.Allocator, options: Options) !Choices {
+pub fn init(allocator: std.mem.Allocator, options: Options, file: std.fs.File) !Choices {
     var strings = std.ArrayList([]const u8).init(allocator);
     errdefer strings.deinit();
 
@@ -67,6 +68,7 @@ pub fn init(allocator: std.mem.Allocator, options: Options) !Choices {
         .worker_count = worker_count,
         .options = options,
         .buffer = std.ArrayList(u8).init(allocator),
+        .file = file,
     };
 }
 
@@ -78,6 +80,7 @@ pub fn deinit(self: *Choices) void {
     self.strings.deinit();
     self.selections.deinit();
     self.buffer.deinit();
+    if (self.file) |file| file.close();
 }
 
 pub fn numChoices(self: Choices) usize {
@@ -100,13 +103,38 @@ pub fn prev(self: *Choices) void {
     };
 }
 
-pub fn read(self: *Choices, file: std.fs.File, input_delimiter: u8) !void {
-    try file.reader().readAllArrayList(&self.buffer, 64 * 1024 * 1024);
-    var it = std.mem.tokenize(u8, self.buffer.items, &[_]u8{input_delimiter});
-    var i: usize = 0;
-    while (it.next()) |line| : (i += 1) {
-        try self.strings.append(line);
+pub fn read(self: *Choices, max_bytes: usize) !bool {
+    if (self.file == null) {
+        return false;
     }
+
+    var file = self.file.?;
+    try self.buffer.ensureTotalCapacity(max_bytes);
+    const orig_len = self.buffer.items.len;
+    self.buffer.expandToCapacity();
+    const bytes_read = try file.reader().readAll(self.buffer.items[orig_len..]);
+    self.buffer.items.len = orig_len + bytes_read;
+    if (self.buffer.items.len < max_bytes) {
+        // EOF
+        file.close();
+        self.file = null;
+    }
+
+    if (self.buffer.items.len == 0) {
+        return false;
+    }
+
+    var pos: usize = 0;
+    while (std.mem.indexOfScalarPos(u8, self.buffer.items, pos, self.options.input_delimiter)) |i| : (pos = i + 1) {
+        const line = self.buffer.items[pos..i];
+        const new_line = try self.allocator.dupe(u8, line);
+        errdefer self.allocator.free(new_line);
+        try self.strings.append(new_line);
+    }
+
+    try self.buffer.replaceRange(0, self.buffer.items.len, self.buffer.items[pos..]);
+
+    return true;
 }
 
 pub fn resetSearch(self: *Choices) void {

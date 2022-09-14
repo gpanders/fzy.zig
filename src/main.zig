@@ -20,9 +20,6 @@ pub fn main() anyerror!u8 {
     var allocator = backing_allocator.allocator();
 
     var options = try Options.new();
-    var choices = try Choices.init(allocator, options);
-    defer choices.deinit();
-
     var file = if (options.input_file) |f|
         std.fs.cwd().openFile(f, .{}) catch |err| switch (err) {
             error.FileNotFound => {
@@ -34,11 +31,13 @@ pub fn main() anyerror!u8 {
         }
     else
         stdin;
-    defer if (options.input_file) |_| file.close();
+
+    var choices = try Choices.init(allocator, options, file);
+    defer choices.deinit();
 
     if (options.benchmark > 0) {
         if (options.filter) |filter| {
-            try choices.read(file, options.input_delimiter);
+            _ = try choices.read(std.math.maxInt(usize));
             var i: usize = 0;
             while (i < options.benchmark) : (i += 1) {
                 try choices.search(filter);
@@ -48,7 +47,7 @@ pub fn main() anyerror!u8 {
             return 1;
         }
     } else if (options.filter) |filter| {
-        try choices.read(file, options.input_delimiter);
+        _ = try choices.read(std.math.maxInt(usize));
         try choices.search(filter);
         for (choices.results.?.items) |result| {
             if (options.show_scores) {
@@ -58,18 +57,18 @@ pub fn main() anyerror!u8 {
         }
     } else {
         if (stdin.isTty()) {
-            try choices.read(file, options.input_delimiter);
+            _ = try choices.read(std.math.maxInt(usize));
         }
 
         var tty = try Tty.init(options.tty_filename);
 
-        if (!stdin.isTty()) {
-            try choices.read(file, options.input_delimiter);
-        }
+        // if (!stdin.isTty()) {
+        //     try choices.read(file, options.input_delimiter);
+        // }
 
-        if (options.num_lines > choices.numChoices()) {
-            options.num_lines = choices.numChoices();
-        }
+        // if (options.num_lines > choices.numChoices()) {
+        //     options.num_lines = choices.numChoices();
+        // }
 
         const num_lines_adjustment: usize = if (options.show_info) 2 else 1;
         if (options.num_lines + num_lines_adjustment > tty.max_height) {
