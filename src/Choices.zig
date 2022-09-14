@@ -49,6 +49,7 @@ selections: std.StringHashMap(void),
 selection: usize = 0,
 worker_count: usize = 0,
 options: Options,
+buffer: std.ArrayList(u8),
 
 pub fn init(allocator: std.mem.Allocator, options: Options) !Choices {
     var strings = std.ArrayList([]const u8).init(allocator);
@@ -65,6 +66,7 @@ pub fn init(allocator: std.mem.Allocator, options: Options) !Choices {
         .selections = std.StringHashMap(void).init(allocator),
         .worker_count = worker_count,
         .options = options,
+        .buffer = std.ArrayList(u8).init(allocator),
     };
 }
 
@@ -75,6 +77,7 @@ pub fn deinit(self: *Choices) void {
     if (self.results) |results| results.deinit();
     self.strings.deinit();
     self.selections.deinit();
+    self.buffer.deinit();
 }
 
 pub fn numChoices(self: Choices) usize {
@@ -98,15 +101,11 @@ pub fn prev(self: *Choices) void {
 }
 
 pub fn read(self: *Choices, file: std.fs.File, input_delimiter: u8) !void {
-    var buffer = try file.reader().readAllAlloc(self.allocator, std.math.maxInt(usize));
-    defer self.allocator.free(buffer);
-
-    var it = std.mem.tokenize(u8, buffer, &[_]u8{input_delimiter});
+    try file.reader().readAllArrayList(&self.buffer, 64 * 1024 * 1024);
+    var it = std.mem.tokenize(u8, self.buffer.items, &[_]u8{input_delimiter});
     var i: usize = 0;
     while (it.next()) |line| : (i += 1) {
-        var new_line = try self.allocator.dupe(u8, line);
-        errdefer self.allocator.free(new_line);
-        try self.strings.append(new_line);
+        try self.strings.append(line);
     }
 }
 
