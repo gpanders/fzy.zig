@@ -97,14 +97,14 @@ pub fn run(self: *TtyInterface) !u8 {
                     return rc;
                 }
 
-                try self.draw(true);
-
                 if (!(try self.tty.waitForEvent(
                     if (self.ambiguous_key_pending) config.KEYTIMEOUT else 0,
                     false,
                     null,
                 )).key) {
                     break;
+                } else {
+                    try self.draw(true);
                 }
             }
         }
@@ -123,7 +123,9 @@ pub fn run(self: *TtyInterface) !u8 {
 }
 
 fn update(self: *TtyInterface) !void {
-    try self.updateSearch();
+    if (self.search.len == 0 or !std.mem.eql(u8, self.last_search.slice(), self.search.slice())) {
+        try self.updateSearch();
+    }
     try self.draw(true);
 }
 
@@ -310,12 +312,10 @@ const Action = struct {
     }
 
     fn next(tty_interface: *TtyInterface) !void {
-        try tty_interface.update();
         tty_interface.choices.next();
     }
 
     fn prev(tty_interface: *TtyInterface) !void {
-        try tty_interface.update();
         tty_interface.choices.prev();
     }
 
