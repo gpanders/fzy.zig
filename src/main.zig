@@ -15,7 +15,12 @@ pub fn main() anyerror!u8 {
         .Debug => std.heap.GeneralPurposeAllocator(.{}){},
         else => std.heap.ArenaAllocator.init(std.heap.page_allocator),
     };
-    defer _ = backing_allocator.deinit();
+    defer switch (builtin.mode) {
+        .Debug => if (backing_allocator.deinit()) {
+            std.debug.print("Memory leaks detected!\n", .{});
+        },
+        else => backing_allocator.deinit(),
+    };
 
     var allocator = backing_allocator.allocator();
 
