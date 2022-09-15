@@ -75,9 +75,11 @@ pub fn run(self: *TtyInterface) !u8 {
                 if (!events.key) {
                     // If there is a key event, don't redraw anything because it will just be
                     // redrawn again in the key event handler
-                    if (new_candidates) {
-                        // When new items are added to the candidate list simply update the total number
-                        // of candidates, but do not re-run the matching algorithm
+                    if (new_candidates and self.choices.numResults() >= self.options.num_lines) {
+                        // When new items are added to the candidate list simply update the total
+                        // number of candidates, but do not re-run the matching algorithm, UNLESS
+                        // the number of results is less than the number of lines displayed in the
+                        // interface, in which case we need to go ahead and update the list
                         try self.draw(false);
                     } else {
                         // When the input file is finished being read, re-run the matching algorithm

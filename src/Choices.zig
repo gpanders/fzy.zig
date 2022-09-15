@@ -109,14 +109,14 @@ pub fn read(self: *Choices) !bool {
     var file = self.file orelse return false;
     const orig_len = self.buffer.items.len;
     self.buffer.expandToCapacity();
-    const bytes_read = try file.reader().readAll(self.buffer.items[orig_len..]);
-    self.buffer.items.len = orig_len + bytes_read;
-    if (self.buffer.items.len < self.buffer.capacity) {
+    const bytes_read = try file.reader().read(self.buffer.items[orig_len..]);
+    if (bytes_read == 0) {
         // EOF
         file.close();
         self.file = null;
     }
 
+    self.buffer.items.len = orig_len + bytes_read;
     if (self.buffer.items.len == 0) {
         return false;
     }
