@@ -2,8 +2,7 @@
 
 Rewrite of John Hawthorn's excellent [fzy][] in Zig.
 
-This was mostly done as a learning exercise/out of curiosity. I don't recommend
-using it unless you enjoy testing beta software.
+See [Usage](#usage) for notable differences from the original.
 
 [fzy]: https://github.com/jhawthorn/fzy
 
@@ -24,25 +23,32 @@ prefix, use the `-p` flag:
 $ zig build -p /usr/local
 ```
 
-By default, `fzy.zig` is built in `Debug` mode. This is very slow, but will
-display useful error messages if the program misbehaves. If you intend to
-actually use `fzy`, you should compile in `ReleaseSafe` mode:
+By default, `fzy.zig` is built in `Debug` mode. This is very slow. If you
+intend to actually use `fzy`, you should compile in either `ReleaseSafe` or
+`ReleaseFast` mode:
 
 ```console
-$ zig build -Drelease-safe=true
-```
-
-`ReleaseSafe` mode is still slower than the original `fzy`. You can compile in
-`ReleastFast` mode to disable all runtime safety checks and enable more
-optimizations:
-
-```console
-$ zig build -Drelease-fast=true
+$ zig build -Drelease-fast
 ```
 
 ## Usage
 
-Usage is the same as the original [fzy][].
+Usage is the same as the original [fzy][] except for the following:
+
+- Input is read concurrently with key events from the user. This means you can
+  start typing your query right away rather than waiting for fzy to read the
+  entire candidate list. This is especially noticable when the input is very
+  large.
+- Multi-select support: press `Ctrl-T` to select multiple items.
+- A `-f`/`--file` flag allows you to read input from a file:
+
+      fzy -f input.txt
+
+  This can of course also be done by just piping the file in over stdin:
+
+      fzy < input.txt
+
+- A `-n`/`--no-sort` flag that prevents `fzy` from sorting matches.
 
 ## License
 
