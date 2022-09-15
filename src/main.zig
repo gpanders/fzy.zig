@@ -49,7 +49,7 @@ pub fn main() anyerror!u8 {
     } else if (options.filter) |filter| {
         _ = try choices.read(std.math.maxInt(usize));
         try choices.search(filter);
-        for (choices.results.?.items) |result| {
+        for (choices.results.items) |result| {
             if (options.show_scores) {
                 stdout.print("{}\t", .{result.score}) catch unreachable;
             }

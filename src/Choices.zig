@@ -10,7 +10,7 @@ const ScoredResult = struct {
     str: []const u8,
 };
 
-const ResultList = std.ArrayList(ScoredResult);
+const ResultList = std.ArrayListUnmanaged(ScoredResult);
 
 const SearchJob = struct {
     lock: std.Thread.Mutex = .{},
@@ -44,7 +44,7 @@ const Worker = struct {
 
 allocator: std.mem.Allocator,
 strings: std.ArrayList([]const u8),
-results: ?ResultList = null,
+results: ResultList = .{},
 selections: std.StringHashMap(void),
 selection: usize = 0,
 worker_count: usize = 0,
@@ -76,7 +76,7 @@ pub fn deinit(self: *Choices) void {
     for (self.strings.items) |s| {
         self.allocator.free(s);
     }
-    if (self.results) |results| results.deinit();
+    self.results.deinit(self.allocator);
     self.strings.deinit();
     self.selections.deinit();
     self.buffer.deinit();
@@ -88,19 +88,19 @@ pub fn numChoices(self: Choices) usize {
 }
 
 pub fn numResults(self: Choices) usize {
-    return if (self.results) |r| r.items.len else 0;
+    return self.results.items.len;
 }
 
 pub fn next(self: *Choices) void {
-    if (self.results) |results| if (results.items.len > 0) {
-        self.selection = (self.selection + 1) % results.items.len;
-    };
+    if (self.results.items.len > 0) {
+        self.selection = (self.selection + 1) % self.results.items.len;
+    }
 }
 
 pub fn prev(self: *Choices) void {
-    if (self.results) |results| if (results.items.len > 0) {
-        self.selection = (self.selection + results.items.len - 1) % results.items.len;
-    };
+    if (self.results.items.len > 0) {
+        self.selection = (self.selection + self.results.items.len - 1) % self.results.items.len;
+    }
 }
 
 pub fn read(self: *Choices, max_bytes: usize) !bool {
@@ -140,10 +140,7 @@ pub fn read(self: *Choices, max_bytes: usize) !bool {
 pub fn resetSearch(self: *Choices) void {
     self.selection = 0;
     self.selections.clearRetainingCapacity();
-    if (self.results) |results| {
-        results.deinit();
-        self.results = null;
-    }
+    self.results.clearAndFree(self.allocator);
 }
 
 pub fn select(self: *Choices, choice: []const u8) !void {
@@ -155,8 +152,8 @@ pub fn deselect(self: *Choices, choice: []const u8) void {
 }
 
 pub fn getResult(self: Choices, i: usize) ?ScoredResult {
-    return if (self.results != null and i < self.results.?.items.len)
-        self.results.?.items[i]
+    return if (i < self.results.items.len)
+        self.results.items[i]
     else
         null;
 }
@@ -167,7 +164,7 @@ pub fn search(self: *Choices, query: []const u8) !void {
     if (query.len == 0) {
         self.results = try ResultList.initCapacity(self.allocator, self.strings.items.len);
         for (self.strings.items) |item| {
-            self.results.?.appendAssumeCapacity(.{
+            self.results.appendAssumeCapacity(.{
                 .str = item,
                 .score = match.SCORE_MIN,
             });
@@ -215,7 +212,7 @@ fn searchWorker(allocator: std.mem.Allocator, worker: *Worker) !void {
 
         for (job.choices[start..end]) |item| {
             if (match.hasMatch(job.search, item)) {
-                try worker.results.append(.{
+                try worker.results.append(allocator, .{
                     .str = item,
                     .score = match.match(job.search, item),
                 });
@@ -240,23 +237,23 @@ fn searchWorker(allocator: std.mem.Allocator, worker: *Worker) !void {
 
         job.workers[next_worker].thread.join();
 
-        worker.results = try merge2(allocator, worker.options.sort, worker.results, job.workers[next_worker].results);
+        worker.results = try merge2(allocator, worker.options.sort, &worker.results, &job.workers[next_worker].results);
     }
 }
 
-fn merge2(allocator: std.mem.Allocator, sort: bool, list1: ResultList, list2: ResultList) !ResultList {
+fn merge2(allocator: std.mem.Allocator, sort: bool, list1: *ResultList, list2: *ResultList) !ResultList {
     if (list2.items.len == 0) {
-        list2.deinit();
-        return list1;
+        list2.deinit(allocator);
+        return list1.*;
     }
 
     if (list1.items.len == 0) {
-        list1.deinit();
-        return list2;
+        list1.deinit(allocator);
+        return list2.*;
     }
 
     var result = try ResultList.initCapacity(allocator, list1.items.len + list2.items.len);
-    errdefer result.deinit();
+    errdefer result.deinit(allocator);
 
     var slice1 = list1.items;
     var slice2 = list2.items;
@@ -274,8 +271,8 @@ fn merge2(allocator: std.mem.Allocator, sort: bool, list1: ResultList, list2: Re
     result.appendSliceAssumeCapacity(slice2);
     result.appendSliceAssumeCapacity(slice1);
 
-    list1.deinit();
-    list2.deinit();
+    list1.deinit(allocator);
+    list2.deinit(allocator);
 
     return result;
 }
