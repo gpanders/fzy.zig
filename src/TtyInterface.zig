@@ -19,6 +19,8 @@ const config = @cImport({
     @cInclude("config.h");
 });
 
+const chunk_size = 8192;
+
 const TtyInterface = @This();
 
 const SEARCH_SIZE_MAX = 4096;
@@ -59,24 +61,24 @@ pub fn deinit(self: *TtyInterface) void {
 }
 
 pub fn run(self: *TtyInterface) !u8 {
-    _ = try self.choices.read(4096);
+    _ = try self.choices.read(chunk_size);
     try self.update();
     while (true) {
         while (true) {
             var events = try self.tty.waitForEvent(null, true, self.choices.file);
             if (events.signal) {
-                try self.draw();
+                try self.draw(true);
             }
 
             if (events.input) {
-                const new_candidates = try self.choices.read(4096);
+                const new_candidates = try self.choices.read(chunk_size);
                 if (!events.key) {
                     // If there is a key event, don't redraw anything because it will just be
                     // redrawn again in the key event handler
                     if (new_candidates) {
                         // When new items are added to the candidate list simply update the total number
                         // of candidates, but do not re-run the matching algorithm
-                        try self.draw();
+                        try self.draw(false);
                     } else {
                         // When the input file is finished being read, re-run the matching algorithm
                         // against the full list of candidates
@@ -93,7 +95,7 @@ pub fn run(self: *TtyInterface) !u8 {
                     return rc;
                 }
 
-                try self.draw();
+                try self.draw(true);
 
                 if (!(try self.tty.waitForEvent(
                     if (self.ambiguous_key_pending) config.KEYTIMEOUT else 0,
@@ -120,7 +122,7 @@ pub fn run(self: *TtyInterface) !u8 {
 
 fn update(self: *TtyInterface) !void {
     try self.updateSearch();
-    try self.draw();
+    try self.draw(true);
 }
 
 fn updateSearch(self: *TtyInterface) !void {
@@ -128,7 +130,7 @@ fn updateSearch(self: *TtyInterface) !void {
     try self.last_search.replaceRange(0, self.last_search.len, self.search.constSlice());
 }
 
-fn draw(self: *TtyInterface) !void {
+fn draw(self: *TtyInterface, draw_matches: bool) !void {
     const tty = self.tty;
     const choices = self.choices;
     const options = self.options;
@@ -152,22 +154,24 @@ fn draw(self: *TtyInterface) !void {
         tty.clearLine();
     }
 
-    var i: usize = start;
-    while (i < start + num_lines) : (i += 1) {
-        tty.printf("\n", .{});
-        tty.clearLine();
-        if (choices.getResult(i)) |result| {
-            self.drawMatch(result.str, i == current_selection);
+    if (draw_matches) {
+        var i: usize = start;
+        while (i < start + num_lines) : (i += 1) {
+            tty.printf("\n", .{});
+            tty.clearLine();
+            if (choices.getResult(i)) |result| {
+                self.drawMatch(result.str, i == current_selection);
+            }
         }
+
+        if (num_lines > 0 or options.show_info) {
+            tty.moveUp(num_lines + @boolToInt(options.show_info));
+        }
+    } else if (options.show_info) {
+        tty.moveUp(1);
     }
 
-    if (num_lines > 0 or options.show_info) {
-        tty.moveUp(num_lines + @boolToInt(options.show_info));
-    }
-
-    tty.setCol(0);
-    _ = try tty.buffered_writer.writer().write(options.prompt);
-    _ = try tty.buffered_writer.writer().write(self.search.slice()[0..self.cursor]);
+    tty.setCol(options.prompt.len + self.cursor);
     tty.flush();
 }
 
