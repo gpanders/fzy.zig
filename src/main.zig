@@ -37,7 +37,7 @@ pub fn main() anyerror!u8 {
 
     if (options.benchmark > 0) {
         if (options.filter) |filter| {
-            _ = try choices.read(std.math.maxInt(usize));
+            try choices.readAll();
             var i: usize = 0;
             while (i < options.benchmark) : (i += 1) {
                 try choices.search(filter);
@@ -47,7 +47,7 @@ pub fn main() anyerror!u8 {
             return 1;
         }
     } else if (options.filter) |filter| {
-        _ = try choices.read(std.math.maxInt(usize));
+        try choices.readAll();
         try choices.search(filter);
         for (choices.results.items) |result| {
             if (options.show_scores) {
@@ -57,18 +57,10 @@ pub fn main() anyerror!u8 {
         }
     } else {
         if (stdin.isTty()) {
-            _ = try choices.read(std.math.maxInt(usize));
+            try choices.readAll();
         }
 
         var tty = try Tty.init(options.tty_filename);
-
-        // if (!stdin.isTty()) {
-        //     try choices.read(file, options.input_delimiter);
-        // }
-
-        // if (options.num_lines > choices.numChoices()) {
-        //     options.num_lines = choices.numChoices();
-        // }
 
         const num_lines_adjustment: usize = if (options.show_info) 2 else 1;
         if (options.num_lines + num_lines_adjustment > tty.max_height) {

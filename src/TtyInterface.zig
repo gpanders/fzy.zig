@@ -61,7 +61,7 @@ pub fn deinit(self: *TtyInterface) void {
 }
 
 pub fn run(self: *TtyInterface) !u8 {
-    _ = try self.choices.read(chunk_size);
+    _ = try self.choices.read();
     try self.update();
     while (true) {
         while (true) {
@@ -71,7 +71,7 @@ pub fn run(self: *TtyInterface) !u8 {
             }
 
             if (events.input) {
-                const new_candidates = try self.choices.read(chunk_size);
+                const new_candidates = try self.choices.read();
                 if (!events.key) {
                     // If there is a key event, don't redraw anything because it will just be
                     // redrawn again in the key event handler

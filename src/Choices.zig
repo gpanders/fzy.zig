@@ -42,6 +42,8 @@ const Worker = struct {
     results: ResultList,
 };
 
+const chunk_size = 16 * 1024;
+
 allocator: std.mem.Allocator,
 strings: std.ArrayList([]const u8),
 results: ResultList = .{},
@@ -67,7 +69,7 @@ pub fn init(allocator: std.mem.Allocator, options: Options, file: std.fs.File) !
         .selections = std.StringHashMap(void).init(allocator),
         .worker_count = worker_count,
         .options = options,
-        .buffer = std.ArrayList(u8).init(allocator),
+        .buffer = try std.ArrayList(u8).initCapacity(allocator, chunk_size),
         .file = file,
     };
 }
@@ -103,18 +105,13 @@ pub fn prev(self: *Choices) void {
     }
 }
 
-pub fn read(self: *Choices, max_bytes: usize) !bool {
-    if (self.file == null) {
-        return false;
-    }
-
-    var file = self.file.?;
-    try self.buffer.ensureTotalCapacity(max_bytes);
+pub fn read(self: *Choices) !bool {
+    var file = self.file orelse return false;
     const orig_len = self.buffer.items.len;
     self.buffer.expandToCapacity();
     const bytes_read = try file.reader().readAll(self.buffer.items[orig_len..]);
     self.buffer.items.len = orig_len + bytes_read;
-    if (self.buffer.items.len < max_bytes) {
+    if (self.buffer.items.len < self.buffer.capacity) {
         // EOF
         file.close();
         self.file = null;
@@ -135,6 +132,10 @@ pub fn read(self: *Choices, max_bytes: usize) !bool {
     try self.buffer.replaceRange(0, self.buffer.items.len, self.buffer.items[pos..]);
 
     return true;
+}
+
+pub fn readAll(self: *Choices) !void {
+    while (self.file) |_| _ = try self.read();
 }
 
 pub fn resetSearch(self: *Choices) void {
