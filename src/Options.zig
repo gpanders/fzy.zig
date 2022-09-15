@@ -34,7 +34,7 @@ pub fn new() !Options {
         \\ -j, --workers <NUM>        Use NUM workers for searching. (default is # of CPUs)
         \\ -b, --benchmark <NUM>      Run the match algorithm NUM times
         \\ -i, --show-info            Show selection info line
-        \\ -f, --file <FILE>          Read choices from FILE insted of stdin
+        \\ -f, --file <FILE>          Read choices from FILE instead of stdin
         \\ -n, --no-sort              Do not sort matches
         \\ -h, --help                 Display this help and exit
         \\ -v, --version              Output version information and exit

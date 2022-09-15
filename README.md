@@ -37,7 +37,7 @@ Usage is the same as the original [fzy][] except for the following:
 
 - Input is read concurrently with key events from the user. This means you can
   start typing your query right away rather than waiting for fzy to read the
-  entire candidate list. This is especially noticable when the input is very
+  entire candidate list. This is especially noticeable when the input is very
   large.
 - Multi-select support: press `Ctrl-T` to select multiple items.
 - A `-f`/`--file` flag allows you to read input from a file:
