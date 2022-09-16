@@ -139,6 +139,7 @@ pub fn readAll(self: *Choices) !void {
 }
 
 pub fn resetSearch(self: *Choices) void {
+    self.selection = 0;
     self.results.clearAndFree(self.allocator);
 }
 

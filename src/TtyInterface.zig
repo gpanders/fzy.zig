@@ -31,7 +31,10 @@ choices: *Choices,
 options: Options,
 
 search: std.BoundedArray(u8, SEARCH_SIZE_MAX) = .{ .buffer = undefined },
-last_search: std.BoundedArray(u8, SEARCH_SIZE_MAX) = .{ .buffer = undefined },
+last_update: struct {
+    search: std.BoundedArray(u8, SEARCH_SIZE_MAX) = .{ .buffer = undefined },
+    num_choices: usize = 0,
+} = .{},
 cursor: usize = 0,
 
 ambiguous_key_pending: bool = false,
@@ -39,7 +42,12 @@ input: std.BoundedArray(u8, 32) = .{ .buffer = undefined },
 
 exit: ?u8 = null,
 
-pub fn init(allocator: std.mem.Allocator, tty: *Tty, choices: *Choices, options: Options) !TtyInterface {
+pub fn init(
+    allocator: std.mem.Allocator,
+    tty: *Tty,
+    choices: *Choices,
+    options: Options,
+) !TtyInterface {
     var self = TtyInterface{
         .allocator = allocator,
         .tty = tty,
@@ -52,6 +60,8 @@ pub fn init(allocator: std.mem.Allocator, tty: *Tty, choices: *Choices, options:
     }
 
     self.cursor = self.search.len;
+
+    try self.updateSearch();
 
     return self;
 }
@@ -82,8 +92,9 @@ pub fn run(self: *TtyInterface) !u8 {
                         // interface, in which case we need to go ahead and update the list
                         try self.draw(false);
                     } else {
-                        // When the input file is finished being read, re-run the matching algorithm
-                        // against the full list of candidates
+                        // If there are no new candidates (meaning the input reached EOF) or if the
+                        // number of current results is less than the number of lines displayed in
+                        // the interface, update the full list
                         try self.update();
                     }
                 }
@@ -97,14 +108,14 @@ pub fn run(self: *TtyInterface) !u8 {
                     return rc;
                 }
 
+                try self.draw(true);
+
                 if (!(try self.tty.waitForEvent(
                     if (self.ambiguous_key_pending) config.KEYTIMEOUT else 0,
                     false,
                     null,
                 )).key) {
                     break;
-                } else {
-                    try self.draw(true);
                 }
             }
         }
@@ -123,15 +134,22 @@ pub fn run(self: *TtyInterface) !u8 {
 }
 
 fn update(self: *TtyInterface) !void {
-    if (self.search.len == 0 or !std.mem.eql(u8, self.last_search.slice(), self.search.slice())) {
+    if (self.choices.numChoices() != self.last_update.num_choices or
+        !std.mem.eql(u8, self.last_update.search.slice(), self.search.slice()))
+    {
         try self.updateSearch();
+        try self.draw(true);
     }
-    try self.draw(true);
 }
 
 fn updateSearch(self: *TtyInterface) !void {
     try self.choices.search(self.search.constSlice());
-    try self.last_search.replaceRange(0, self.last_search.len, self.search.constSlice());
+    try self.last_update.search.replaceRange(
+        0,
+        self.last_update.search.len,
+        self.search.constSlice(),
+    );
+    self.last_update.num_choices = self.choices.numChoices();
 }
 
 fn draw(self: *TtyInterface, draw_matches: bool) !void {
@@ -139,15 +157,7 @@ fn draw(self: *TtyInterface, draw_matches: bool) !void {
     const choices = self.choices;
     const options = self.options;
     const num_lines = options.num_lines;
-    var start: usize = 0;
     const available = choices.numResults();
-    const current_selection = choices.selection;
-    if (current_selection + options.scrolloff >= num_lines) {
-        start = current_selection + options.scrolloff - num_lines + 1;
-        if (start + num_lines >= available and available > 0) {
-            start = available - num_lines;
-        }
-    }
 
     tty.setCol(0);
     tty.printf("{s}{s}", .{ options.prompt, self.search.constSlice() });
@@ -159,6 +169,15 @@ fn draw(self: *TtyInterface, draw_matches: bool) !void {
     }
 
     if (draw_matches) {
+        var start: usize = 0;
+        const current_selection = choices.selection;
+        if (current_selection + options.scrolloff >= num_lines) {
+            start = current_selection + options.scrolloff - num_lines + 1;
+            if (start + num_lines >= available and available > 0) {
+                start = available - num_lines;
+            }
+        }
+
         var i: usize = start;
         while (i < start + num_lines) : (i += 1) {
             tty.printf("\n", .{});
@@ -238,7 +257,7 @@ fn clear(self: *TtyInterface) void {
     var tty = self.tty;
     tty.setCol(0);
     var line: usize = 0;
-    while (line < self.options.num_lines + @as(usize, if (self.options.show_info) 1 else 0)) : (line += 1) {
+    while (line < self.options.num_lines + @boolToInt(self.options.show_info)) : (line += 1) {
         tty.newline();
     }
     tty.clearLine();
@@ -352,8 +371,9 @@ const Action = struct {
         try tty_interface.update();
         var choices = tty_interface.choices;
         const available = choices.numResults();
+        const num_lines = tty_interface.options.num_lines;
         var i: usize = 0;
-        while (i < tty_interface.options.num_lines and choices.selection < available - 1) : (i += 1) {
+        while (i < num_lines and choices.selection < available - 1) : (i += 1) {
             choices.next();
         }
     }
