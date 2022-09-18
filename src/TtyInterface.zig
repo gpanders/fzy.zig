@@ -5,6 +5,8 @@ const Tty = @import("Tty.zig");
 const Choices = @import("Choices.zig");
 const Options = @import("Options.zig");
 
+const String = Choices.String;
+
 const match = @import("match.zig");
 
 const config = @cImport({
@@ -198,7 +200,7 @@ fn draw(self: *TtyInterface, draw_matches: bool) !void {
     tty.flush();
 }
 
-fn drawMatch(self: *TtyInterface, choice: []const u8, selected: bool) void {
+fn drawMatch(self: *TtyInterface, choice: String, selected: bool) void {
     const tty = self.tty;
     const options = self.options;
     const search = self.search;
@@ -209,7 +211,8 @@ fn drawMatch(self: *TtyInterface, choice: []const u8, selected: bool) void {
         positions[i] = std.math.maxInt(usize);
     }
 
-    var score = match.matchPositions(self.allocator, search.constSlice(), choice, &positions);
+    const str = self.choices.getString(choice);
+    var score = match.matchPositions(self.allocator, search.constSlice(), str, &positions);
 
     if (options.show_scores) {
         if (score == match.SCORE_MIN) {
@@ -235,7 +238,7 @@ fn drawMatch(self: *TtyInterface, choice: []const u8, selected: bool) void {
 
     tty.setWrap(false);
     var p: usize = 0;
-    for (choice) |c, k| {
+    for (str) |c, k| {
         if (positions[p] == k) {
             tty.setFg(config.TTY_COLOR_HIGHLIGHT);
             p += 1;
@@ -315,15 +318,16 @@ const Action = struct {
         const choices = tty_interface.choices;
         if (choices.selections.count() == 0) {
             if (choices.getResult(choices.selection)) |selection| {
-                try stdout.print("{s}\n", .{selection.str});
+                try stdout.print("{s}\n", .{choices.getString(selection.str)});
             } else {
                 // No match, output the query instead
                 try stdout.print("{s}\n", .{tty_interface.search.slice()});
             }
         } else {
-            var it = choices.selections.keyIterator();
-            while (it.next()) |selection| {
-                try stdout.print("{s}\n", .{selection.*});
+            var it = choices.selections.iterator();
+            while (it.next()) |entry| {
+                const s = entry.key_ptr.*;
+                try stdout.print("{s}\n", .{choices.getString(s)});
             }
         }
 
@@ -382,10 +386,11 @@ const Action = struct {
         try tty_interface.update();
         const choices = tty_interface.choices;
         if (choices.getResult(choices.selection)) |selection| {
-            if (choices.selections.contains(selection.str)) {
-                choices.deselect(selection.str);
+            const gop = try choices.selections.getOrPut(selection.str);
+            if (gop.found_existing) {
+                choices.selections.removeByPtr(gop.key_ptr);
             } else {
-                try choices.select(selection.str);
+                gop.value_ptr.* = {};
             }
             choices.next();
         }

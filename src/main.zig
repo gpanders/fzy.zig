@@ -58,7 +58,7 @@ pub fn main() anyerror!u8 {
             if (options.show_scores) {
                 stdout.print("{}\t", .{result.score}) catch unreachable;
             }
-            stdout.print("{s}\n", .{result.str}) catch unreachable;
+            stdout.print("{s}\n", .{choices.getString(result.str)}) catch unreachable;
         }
     } else {
         if (stdin.isTty()) {
