@@ -21,20 +21,18 @@ const config = @cImport({
     @cInclude("config.h");
 });
 
-const chunk_size = 8192;
-
 const TtyInterface = @This();
 
-const SEARCH_SIZE_MAX = 4096;
+const max_search_size = 4096;
 
 allocator: std.mem.Allocator,
 tty: *Tty,
 choices: *Choices,
-options: Options,
+options: *const Options,
 
-search: std.BoundedArray(u8, SEARCH_SIZE_MAX) = .{ .buffer = undefined },
+search: std.BoundedArray(u8, max_search_size) = .{ .buffer = undefined },
 last_update: struct {
-    search: std.BoundedArray(u8, SEARCH_SIZE_MAX) = .{ .buffer = undefined },
+    search: std.BoundedArray(u8, max_search_size) = .{ .buffer = undefined },
     num_choices: usize = 0,
 } = .{},
 cursor: usize = 0,
@@ -48,7 +46,7 @@ pub fn init(
     allocator: std.mem.Allocator,
     tty: *Tty,
     choices: *Choices,
-    options: Options,
+    options: *const Options,
 ) !TtyInterface {
     var self = TtyInterface{
         .allocator = allocator,

@@ -37,7 +37,7 @@ pub fn main() anyerror!u8 {
     else
         stdin;
 
-    var choices = try Choices.init(allocator, options, file);
+    var choices = try Choices.init(allocator, &options, file);
     defer choices.deinit();
 
     if (options.benchmark > 0) {
@@ -72,7 +72,7 @@ pub fn main() anyerror!u8 {
             options.num_lines = tty.max_height - num_lines_adjustment;
         }
 
-        var tty_interface = try TtyInterface.init(allocator, &tty, &choices, options);
+        var tty_interface = try TtyInterface.init(allocator, &tty, &choices, &options);
         defer tty_interface.deinit();
 
         if (tty_interface.run()) |rc| {

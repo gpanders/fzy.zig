@@ -43,7 +43,7 @@ const SearchJob = struct {
 const Worker = struct {
     thread: std.Thread,
     job: *SearchJob,
-    options: *Options,
+    options: *const Options,
     worker_num: usize,
     results: ResultList,
 };
@@ -56,12 +56,12 @@ results: ResultList = .{},
 selections: std.AutoHashMap(String, void),
 selection: usize = 0,
 worker_count: usize = 0,
-options: Options,
+options: *const Options,
 buffer: std.ArrayList(u8),
 buffer_cursor: usize = 0,
 file: ?std.fs.File,
 
-pub fn init(allocator: std.mem.Allocator, options: Options, file: std.fs.File) !Choices {
+pub fn init(allocator: std.mem.Allocator, options: *const Options, file: std.fs.File) !Choices {
     const worker_count: usize = if (options.workers > 0)
         options.workers
     else
@@ -191,7 +191,7 @@ pub fn search(self: *Choices, query: []const u8) !void {
     while (i > 0) {
         i -= 1;
         workers[i].job = &job;
-        workers[i].options = &self.options;
+        workers[i].options = self.options;
         workers[i].worker_num = i;
         workers[i].results = try ResultList.initCapacity(self.allocator, SearchJob.BATCH_SIZE);
         workers[i].thread = try std.Thread.spawn(.{}, searchWorker, .{ self.allocator, &workers[i] });
