@@ -144,7 +144,20 @@ pub fn read(self: *Choices) !bool {
 }
 
 pub fn readAll(self: *Choices) !void {
-    while (self.file) |_| _ = try self.read();
+    var file = self.file.?;
+    try file.reader().readAllArrayList(&self.buffer, std.math.maxInt(usize));
+
+    while (std.mem.indexOfScalarPos(
+        u8,
+        self.buffer.items,
+        self.buffer_cursor,
+        self.options.input_delimiter,
+    )) |i| : (self.buffer_cursor = i + 1) {
+        try self.strings.append(.{
+            .start = self.buffer_cursor,
+            .end = i,
+        });
+    }
 }
 
 pub fn resetSearch(self: *Choices) void {
