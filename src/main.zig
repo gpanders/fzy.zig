@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const stdout = std.io.getStdOut().writer();
-const stderr = std.io.getStdErr().writer();
+const stdout = std.io.getStdOut();
+const stderr = std.io.getStdErr();
 const stdin = std.io.getStdIn();
 
 const Options = @import("Options.zig");
@@ -28,7 +28,7 @@ pub fn main() anyerror!u8 {
     var file = if (options.input_file) |f|
         std.fs.cwd().openFile(f, .{}) catch |err| switch (err) {
             error.FileNotFound => {
-                try stderr.print("Input file {s} not found\n", .{f});
+                try stderr.writer().print("Input file {s} not found\n", .{f});
                 return 1;
             },
             error.PathAlreadyExists => unreachable,
@@ -54,12 +54,15 @@ pub fn main() anyerror!u8 {
     } else if (options.filter) |filter| {
         try choices.readAll();
         try choices.search(filter);
+        var buffered_stdout = std.io.bufferedWriter(stdout.writer());
+        var writer = buffered_stdout.writer();
         for (choices.results.items) |result| {
             if (options.show_scores) {
-                stdout.print("{}\t", .{result.score}) catch unreachable;
+                writer.print("{}\t", .{result.score}) catch unreachable;
             }
-            stdout.print("{s}\n", .{choices.getString(result.str)}) catch unreachable;
+            writer.print("{s}\n", .{choices.getString(result.str)}) catch unreachable;
         }
+        try buffered_stdout.flush();
     } else {
         if (stdin.isTty()) {
             try choices.readAll();
