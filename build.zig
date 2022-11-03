@@ -24,7 +24,7 @@ pub fn build(b: *std.build.Builder) void {
     exe.step.dependOn(&cmd.step);
     exe.setTarget(target);
     exe.setBuildMode(mode);
-    exe.addIncludeDir(".");
+    exe.addIncludePath(".");
     exe.addPackage(pkgs.clap);
     exe.install();
 
