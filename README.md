@@ -8,11 +8,11 @@ See [Usage](#usage) for notable differences from the original.
 
 ## Building
 
-Obviously building fzy.zig requires a Zig toolchain. Currently Zig master is
-required.
+Zig 0.10.0 is required. To clone and build, simply run:
 
 ```console
 $ git clone --recursive https://github.com/gpanders/fzy.zig
+$ cd fzy.zig
 $ zig build
 ```
 
