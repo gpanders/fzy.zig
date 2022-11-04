@@ -24,7 +24,7 @@ pub fn main() anyerror!u8 {
 
     var allocator = backing_allocator.allocator();
 
-    var options = try Options.new();
+    var options = try Options.parse();
     var file = if (options.input_file) |f|
         std.fs.cwd().openFile(f, .{}) catch |err| switch (err) {
             error.FileNotFound => {

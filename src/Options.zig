@@ -20,7 +20,7 @@ show_info: bool = config.DEFAULT_SHOW_INFO != 0,
 input_file: ?[]const u8 = null,
 sort: bool = true,
 
-pub fn new() !Options {
+pub fn parse() !Options {
     var options = Options{};
 
     const params = comptime clap.parseParamsComptime(
