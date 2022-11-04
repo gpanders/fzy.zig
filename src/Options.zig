@@ -4,19 +4,19 @@ const stderr = std.io.getStdErr().writer();
 
 const Options = @This();
 
-const config = @cImport(@cInclude("config.h"));
+const config = @import("config");
 
 benchmark: u32 = 0,
 filter: ?[]const u8 = null,
 init_search: ?[]const u8 = null,
 show_scores: bool = false,
 scrolloff: usize = 1,
-tty_filename: []const u8 = config.DEFAULT_TTY,
-num_lines: usize = config.DEFAULT_NUM_LINES,
-prompt: []const u8 = config.DEFAULT_PROMPT,
-workers: usize = config.DEFAULT_WORKERS,
+tty_filename: []const u8 = config.default_tty,
+num_lines: usize = config.default_num_lines,
+prompt: []const u8 = config.default_prompt,
+workers: usize = config.default_workers,
 input_delimiter: u8 = '\n',
-show_info: bool = config.DEFAULT_SHOW_INFO != 0,
+show_info: bool = config.default_show_info,
 input_file: ?[]const u8 = null,
 sort: bool = true,
 

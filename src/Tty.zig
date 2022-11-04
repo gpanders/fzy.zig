@@ -10,21 +10,23 @@ const libc = @cImport({
 
 const Tty = @This();
 
-pub const COLOR_BLACK = 0;
-pub const COLOR_RED = 1;
-pub const COLOR_GREEN = 2;
-pub const COLOR_YELLOW = 3;
-pub const COLOR_BLUE = 4;
-pub const COLOR_MAGENTA = 5;
-pub const COLOR_CYAN = 6;
-pub const COLOR_WHITE = 7;
-pub const COLOR_NORMAL = 9;
+const Color = enum(u8) {
+    black = 0,
+    red = 1,
+    green = 2,
+    yellow = 3,
+    blue = 4,
+    magenta = 5,
+    cyan = 6,
+    white = 7,
+    normal = 9,
+};
 
 fdin: i32,
 fout: std.fs.File,
 buffered_writer: std.io.BufferedWriter(4096, std.fs.File.Writer),
 original_termios: std.os.termios,
-fg_color: i32 = 0,
+fg_color: Color = .normal,
 max_width: usize = 0,
 max_height: usize = 0,
 
@@ -89,10 +91,10 @@ pub fn printf(self: *Tty, comptime format: []const u8, args: anytype) void {
     self.buffered_writer.writer().print(format, args) catch unreachable;
 }
 
-pub fn setFg(self: *Tty, fg: i32) void {
+pub fn setFg(self: *Tty, fg: Color) void {
     if (self.fg_color != fg) {
-        self.sgr(30 + fg);
-        self.fg_color = 30;
+        self.sgr(30 + @enumToInt(fg));
+        self.fg_color = fg;
     }
 }
 
@@ -110,7 +112,7 @@ pub fn setBold(self: *Tty) void {
 
 pub fn setNormal(self: *Tty) void {
     self.sgr(0);
-    self.fg_color = COLOR_NORMAL;
+    self.fg_color = .normal;
 }
 
 pub fn setWrap(self: *Tty, wrap: bool) void {

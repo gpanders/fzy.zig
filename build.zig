@@ -24,8 +24,8 @@ pub fn build(b: *std.build.Builder) void {
     exe.step.dependOn(&cmd.step);
     exe.setTarget(target);
     exe.setBuildMode(mode);
-    exe.addIncludePath(".");
     exe.addPackage(pkgs.clap);
+    exe.addPackagePath("config", "config.zig");
     exe.install();
 
     const run_cmd = exe.run();

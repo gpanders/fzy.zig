@@ -9,17 +9,7 @@ const String = Choices.String;
 
 const match = @import("match.zig");
 
-const config = @cImport({
-    @cDefine("COLOR_BLACK", std.fmt.comptimePrint("{d}", .{Tty.COLOR_BLACK}));
-    @cDefine("COLOR_RED", std.fmt.comptimePrint("{d}", .{Tty.COLOR_RED}));
-    @cDefine("COLOR_GREEN", std.fmt.comptimePrint("{d}", .{Tty.COLOR_GREEN}));
-    @cDefine("COLOR_YELLOW", std.fmt.comptimePrint("{d}", .{Tty.COLOR_YELLOW}));
-    @cDefine("COLOR_BLUE", std.fmt.comptimePrint("{d}", .{Tty.COLOR_BLUE}));
-    @cDefine("COLOR_MAGENTA", std.fmt.comptimePrint("{d}", .{Tty.COLOR_MAGENTA}));
-    @cDefine("COLOR_CYAN", std.fmt.comptimePrint("{d}", .{Tty.COLOR_CYAN}));
-    @cDefine("COLOR_WHITE", std.fmt.comptimePrint("{d}", .{Tty.COLOR_WHITE}));
-    @cInclude("config.h");
-});
+const config = @import("config");
 
 const TtyInterface = @This();
 
@@ -111,7 +101,7 @@ pub fn run(self: *TtyInterface) !u8 {
                 try self.draw(true);
 
                 if (!(try self.tty.waitForEvent(
-                    if (self.ambiguous_key_pending) config.KEYTIMEOUT else 0,
+                    if (self.ambiguous_key_pending) config.keytimeout else 0,
                     false,
                     null,
                 )).key) {
@@ -227,7 +217,7 @@ fn drawMatch(self: *TtyInterface, choice: String, selected: bool) void {
     }
 
     if (selected) {
-        if (config.TTY_SELECTION_UNDERLINE != 0) {
+        if (config.tty_selection_underline) {
             tty.setUnderline();
         } else {
             tty.setInvert();
@@ -238,10 +228,10 @@ fn drawMatch(self: *TtyInterface, choice: String, selected: bool) void {
     var p: usize = 0;
     for (str) |c, k| {
         if (positions[p] == k) {
-            tty.setFg(config.TTY_COLOR_HIGHLIGHT);
+            tty.setFg(config.tty_color_highlight);
             p += 1;
         } else {
-            tty.setFg(Tty.COLOR_NORMAL);
+            tty.setFg(.normal);
         }
 
         if (c == '\n') {

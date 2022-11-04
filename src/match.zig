@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const config = @cImport(@cInclude("config.h"));
+const config = @import("config");
 
 pub const Score = f64;
 
@@ -36,21 +36,21 @@ const BONUS_STATES = init: {
         std.mem.set(Score, sub, 0);
     }
 
-    table[1]['/'] = config.SCORE_MATCH_SLASH;
-    table[1]['-'] = config.SCORE_MATCH_WORD;
-    table[1]['_'] = config.SCORE_MATCH_WORD;
-    table[1][' '] = config.SCORE_MATCH_WORD;
-    table[1]['.'] = config.SCORE_MATCH_DOT;
+    table[1]['/'] = config.score_match_slash;
+    table[1]['-'] = config.score_match_word;
+    table[1]['_'] = config.score_match_word;
+    table[1][' '] = config.score_match_word;
+    table[1]['.'] = config.score_match_dot;
 
-    table[2]['/'] = config.SCORE_MATCH_SLASH;
-    table[2]['-'] = config.SCORE_MATCH_WORD;
-    table[2]['_'] = config.SCORE_MATCH_WORD;
-    table[2][' '] = config.SCORE_MATCH_WORD;
-    table[2]['.'] = config.SCORE_MATCH_DOT;
+    table[2]['/'] = config.score_match_slash;
+    table[2]['-'] = config.score_match_word;
+    table[2]['_'] = config.score_match_word;
+    table[2][' '] = config.score_match_word;
+    table[2]['.'] = config.score_match_dot;
 
     var i = 'a';
     while (i <= 'z') : (i += 1) {
-        table[2][i] = config.SCORE_MATCH_CAPITAL;
+        table[2][i] = config.score_match_capital;
     }
 
     break :init table;
@@ -87,17 +87,17 @@ pub const Match = struct {
     fn matchRow(self: *Match, row: usize, curr_D: []Score, curr_M: []Score, last_D: []const Score, last_M: []const Score) void {
         var prev_score: Score = SCORE_MIN;
         var gap_score: Score = if (row == self.needle.len - 1)
-            config.SCORE_GAP_TRAILING
+            config.score_gap_trailing
         else
-            config.SCORE_GAP_INNER;
+            config.score_gap_inner;
 
         for (self.haystack) |h, j| {
             if (self.needle[row] == h) {
                 var score: Score = SCORE_MIN;
                 if (row == 0) {
-                    score = (@intToFloat(f64, j) * config.SCORE_GAP_LEADING) + match_bonus[j];
+                    score = (@intToFloat(f64, j) * config.score_gap_leading) + match_bonus[j];
                 } else if (j > 0) {
-                    score = std.math.max(last_M[j - 1] + match_bonus[j], last_D[j - 1] + config.SCORE_MATCH_CONSECUTIVE);
+                    score = std.math.max(last_M[j - 1] + match_bonus[j], last_D[j - 1] + config.score_match_consecutive);
                 }
 
                 curr_D[j] = score;
@@ -215,7 +215,7 @@ pub fn matchPositions(allocator: std.mem.Allocator, needle: []const u8, haystack
                     // If this score was determined using
                     // SCORE_MATCH_CONSECUTIVE, the previous character MUST
                     // be a match
-                    match_required = (i != 0) and (jj != 0) and M[i][jj] == D[i - 1][jj - 1] + config.SCORE_MATCH_CONSECUTIVE;
+                    match_required = (i != 0) and (jj != 0) and M[i][jj] == D[i - 1][jj - 1] + config.score_match_consecutive;
                     positions.?[i] = jj;
                     if (jj == 0) break :outer;
                     j -= 1;
