@@ -66,6 +66,11 @@ pub fn main() anyerror!u8 {
     } else {
         if (stdin.isTty()) {
             try choices.readAll();
+        } else if (blk: {
+            const stat = try std.os.fstat(stdin.handle);
+            break :blk std.os.S.ISREG(stat.mode);
+        }) {
+            try choices.readAll();
         }
 
         var tty = try Tty.init(options.tty_filename);
