@@ -52,6 +52,7 @@ pub fn init(
     self.cursor = self.search.len;
 
     try self.updateSearch();
+    try self.draw(true);
 
     return self;
 }

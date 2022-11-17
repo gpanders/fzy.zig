@@ -64,7 +64,13 @@ pub fn main() anyerror!u8 {
         }
         try buffered_stdout.flush();
     } else {
-        if (stdin.isTty()) {
+        // If stdin is a tty OR if stdin is reading from a regular file, read all choices into
+        // memory up front.
+        const is_reg = blk: {
+            const stat = try std.os.fstat(stdin.handle);
+            break :blk std.os.S.ISREG(stat.mode);
+        };
+        if (stdin.isTty() or is_reg) {
             try choices.readAll();
         }
 
