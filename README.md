@@ -6,6 +6,11 @@ See [Usage](#usage) for notable differences from the original.
 
 [fzy]: https://github.com/jhawthorn/fzy
 
+## Project Status
+
+This repo is **experimental** and its primary purpose is for experimentation
+and/or fun. Please abandon any expectations of this being a serious project.
+
 ## Building
 
 Zig 0.10.0 is required. To clone and build, simply run:
@@ -49,6 +54,12 @@ Usage is the same as the original [fzy][] except for the following:
       fzy < input.txt
 
 - A `-n`/`--no-sort` flag that prevents `fzy` from sorting matches.
+
+## Contributing
+
+Questions, bugs, and patches can be sent to the [mailing list][].
+
+[mailing list]: https://lists.sr.ht/~gpanders/public-inbox
 
 ## License
 

@@ -70,6 +70,7 @@ pub fn main() anyerror!u8 {
             const stat = try std.os.fstat(stdin.handle);
             break :blk std.os.S.ISREG(stat.mode);
         };
+
         if (stdin.isTty() or is_reg) {
             try choices.readAll();
         }
