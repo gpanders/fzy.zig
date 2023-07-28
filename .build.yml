@@ -8,7 +8,9 @@ environment:
 tasks:
     - nopr: |
         # Don't run on GitHub PRs
-        [ "$BUILD_SUBMITTER" = 'git.sr.ht' ] || complete-build
-    - mirror: |
-        cd fzy.zig
-        git push --force --mirror git@github.com:gpanders/fzy.zig
+        if [ "$BUILD_REASON" = 'github-pr' ]; then
+            exit
+        fi
+
+        git clone --mirror https://git.sr.ht/~gpanders/fzy.zig fzy.zig.git
+        git -C fzy.zig.git push --force --mirror git@github.com:gpanders/fzy.zig
