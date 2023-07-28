@@ -184,7 +184,7 @@ pub fn search(self: *Choices, query: []const u8) !void {
         for (self.strings.items) |item| {
             self.results.appendAssumeCapacity(.{
                 .str = item,
-                .score = match.SCORE_MIN,
+                .score = match.min_score,
             });
         }
         return;
@@ -241,7 +241,7 @@ fn searchWorker(allocator: std.mem.Allocator, worker: *Worker) !void {
     }
 
     if (worker.options.sort) {
-        std.sort.sort(ScoredResult, worker.results.items, {}, compareChoices);
+        std.mem.sort(ScoredResult, worker.results.items, {}, compareChoices);
     }
 
     var step: u6 = 0;

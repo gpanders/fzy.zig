@@ -15,17 +15,19 @@ const TtyInterface = @This();
 
 const max_search_size = 4096;
 
+const SearchBuffer = std.BoundedArray(u8, max_search_size);
+
 allocator: std.mem.Allocator,
 tty: *Tty,
 choices: *Choices,
 options: *const Options,
 
-search: std.BoundedArray(u8, max_search_size) = .{ .buffer = undefined },
+search: SearchBuffer = .{ .buffer = undefined },
 last_update: struct {
-    search: std.BoundedArray(u8, max_search_size) = .{ .buffer = undefined },
+    search: SearchBuffer = .{ .buffer = undefined },
     num_choices: usize = 0,
 } = .{},
-cursor: usize = 0,
+cursor: std.math.IntFittingRange(0, max_search_size) = 0,
 
 ambiguous_key_pending: bool = false,
 input: std.BoundedArray(u8, 32) = .{ .buffer = undefined },
@@ -179,7 +181,7 @@ fn draw(self: *TtyInterface, draw_matches: bool) !void {
         }
 
         if (num_lines > 0 or options.show_info) {
-            tty.moveUp(num_lines + @boolToInt(options.show_info));
+            tty.moveUp(num_lines + @intFromBool(options.show_info));
         }
     } else if (options.show_info) {
         tty.moveUp(1);
@@ -194,9 +196,9 @@ fn drawMatch(self: *TtyInterface, choice: String, selected: bool) void {
     const options = self.options;
     const search = self.search;
     const n = search.len;
-    var positions: [match.MAX_LEN]usize = undefined;
+    var positions: [match.max_len]usize = undefined;
     var i: usize = 0;
-    while (i < n + 1 and i < match.MAX_LEN) : (i += 1) {
+    while (i < n + 1 and i < match.max_len) : (i += 1) {
         positions[i] = std.math.maxInt(usize);
     }
 
@@ -204,9 +206,9 @@ fn drawMatch(self: *TtyInterface, choice: String, selected: bool) void {
     var score = match.matchPositions(self.allocator, search.constSlice(), str, &positions);
 
     if (options.show_scores) {
-        if (score == match.SCORE_MIN) {
+        if (score == match.min_score) {
             tty.printf("(     ) ", .{});
-        } else if (score == match.SCORE_MAX) {
+        } else if (score == match.max_score) {
             tty.printf("(exact) ", .{});
         } else {
             tty.printf("({d:5.2}) ", .{score});
@@ -227,7 +229,7 @@ fn drawMatch(self: *TtyInterface, choice: String, selected: bool) void {
 
     tty.setWrap(false);
     var p: usize = 0;
-    for (str) |c, k| {
+    for (str, 0..) |c, k| {
         if (positions[p] == k) {
             tty.setFg(config.tty_color_highlight);
             p += 1;
@@ -249,7 +251,7 @@ fn clear(self: *TtyInterface) void {
     var tty = self.tty;
     tty.setCol(0);
     var line: usize = 0;
-    while (line < self.options.num_lines + @boolToInt(self.options.show_info)) : (line += 1) {
+    while (line < self.options.num_lines + @intFromBool(self.options.show_info)) : (line += 1) {
         tty.newline();
     }
     tty.clearLine();
@@ -289,10 +291,10 @@ const Action = struct {
     fn delWord(tty_interface: *TtyInterface) !void {
         var search = tty_interface.search.constSlice();
         var i: usize = tty_interface.cursor;
-        while (i > 0 and std.ascii.isSpace(search[i - 1])) : (i -= 1) {}
-        while (i > 0 and !std.ascii.isSpace(search[i - 1])) : (i -= 1) {}
-        tty_interface.search.len = i;
-        tty_interface.cursor = i;
+        while (i > 0 and std.ascii.isWhitespace(search[i - 1])) : (i -= 1) {}
+        while (i > 0 and !std.ascii.isWhitespace(search[i - 1])) : (i -= 1) {}
+        tty_interface.search.len = @intCast(i);
+        tty_interface.cursor = @intCast(i);
     }
 
     fn delAll(tty_interface: *TtyInterface) !void {

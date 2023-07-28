@@ -78,7 +78,7 @@ pub fn deinit(self: *Tty) void {
 
 pub fn getWinSize(self: *Tty) void {
     var ws: system.winsize = undefined;
-    if (system.ioctl(self.fout.handle, system.T.IOCGWINSZ, @ptrToInt(&ws)) == -1) {
+    if (system.ioctl(self.fout.handle, system.T.IOCGWINSZ, @intFromPtr(&ws)) == -1) {
         self.max_width = 80;
         self.max_height = 25;
     } else {
@@ -93,7 +93,7 @@ pub fn printf(self: *Tty, comptime format: []const u8, args: anytype) void {
 
 pub fn setFg(self: *Tty, fg: Color) void {
     if (self.fg_color != fg) {
-        self.sgr(30 + @enumToInt(fg));
+        self.sgr(30 + @intFromEnum(fg));
         self.fg_color = fg;
     }
 }
@@ -183,7 +183,7 @@ pub fn waitForEvent(self: *Tty, timeout: ?i32, return_on_signal: bool, input: ?s
             var chlist: [2]std.os.Kevent = undefined;
             var nevents: i32 = 1;
             chlist[0] = .{
-                .ident = @intCast(usize, self.fdin),
+                .ident = @intCast(self.fdin),
                 .filter = system.EVFILT_READ,
                 .flags = system.EV_ADD | system.EV_ONESHOT | system.EV_CLEAR,
                 .fflags = system.NOTE_LOWAT,
@@ -194,7 +194,7 @@ pub fn waitForEvent(self: *Tty, timeout: ?i32, return_on_signal: bool, input: ?s
             if (input) |in| {
                 nevents = 2;
                 chlist[1] = .{
-                    .ident = @intCast(usize, in.handle),
+                    .ident = @intCast(in.handle),
                     .filter = system.EVFILT_READ,
                     .flags = system.EV_ADD,
                     .fflags = 0,
@@ -210,15 +210,15 @@ pub fn waitForEvent(self: *Tty, timeout: ?i32, return_on_signal: bool, input: ?s
                 const rc = system.kevent(kq, &chlist, nevents, &evlist, nevents, ts);
                 switch (std.os.errno(rc)) {
                     .SUCCESS => {
-                        for (evlist[0..@intCast(usize, rc)]) |ev| {
+                        for (evlist[0..@intCast(rc)]) |ev| {
                             if (ev.flags & system.EV_ERROR != 0) {
                                 std.debug.print("kevent error: {s}\n", .{
                                     @tagName(std.os.errno(ev.data)),
                                 });
                                 return error.InvalidValue;
-                            } else if (ev.ident == @intCast(usize, self.fdin)) {
+                            } else if (ev.ident == @as(usize, @intCast(self.fdin))) {
                                 events.key = true;
-                            } else if (input != null and ev.ident == @intCast(usize, input.?.handle)) {
+                            } else if (input != null and ev.ident == @as(usize, @intCast(input.?.handle))) {
                                 events.input = true;
                             }
                         }

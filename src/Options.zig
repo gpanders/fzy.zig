@@ -55,7 +55,7 @@ pub fn parse() !Options {
         .PROMPT = clap.parsers.string,
         .QUERY = clap.parsers.string,
         .TTY = clap.parsers.string,
-        .NUM = clap.parsers.int(u32, 10),
+        .NUM = clap.parsers.int(u32, 0),
         .FILE = clap.parsers.string,
     };
 
@@ -68,7 +68,7 @@ pub fn parse() !Options {
     };
     defer res.deinit();
 
-    if (res.args.help) {
+    if (res.args.help != 0) {
         try usage();
         std.process.exit(0);
     }
@@ -98,16 +98,16 @@ pub fn parse() !Options {
     if (res.args.tty) |t|
         options.tty_filename = t;
 
-    if (res.args.@"show-scores")
+    if (res.args.@"show-scores" != 0)
         options.show_scores = true;
 
-    if (res.args.@"read-null")
+    if (res.args.@"read-null" != 0)
         options.input_delimiter = 0;
 
     if (res.args.workers) |j|
         options.workers = j;
 
-    if (res.args.@"show-info")
+    if (res.args.@"show-info" != 0)
         options.show_info = true;
 
     if (res.args.benchmark) |b|
@@ -117,7 +117,7 @@ pub fn parse() !Options {
         options.input_file = f;
     }
 
-    if (res.args.@"no-sort")
+    if (res.args.@"no-sort" != 0)
         options.sort = false;
 
     return options;
