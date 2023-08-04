@@ -1,20 +1,13 @@
 const std = @import("std");
 
-const pkgs = struct {
-    const clap = .{
-        .source_file = .{ .path = "deps/clap/clap.zig" },
-    };
-
-    const config = .{
-        .source_file = .{ .path = "config.zig" },
-    };
-};
-
 pub fn build(b: *std.build.Builder) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const cmd = b.addSystemCommand(&[_][]const u8{ "git", "submodule", "update", "--init" });
+    const clap = b.dependency("clap", .{
+        .target = target,
+        .optimize = optimize,
+    });
 
     const exe = b.addExecutable(.{
         .name = "fzy",
@@ -22,9 +15,8 @@ pub fn build(b: *std.build.Builder) void {
         .target = target,
         .optimize = optimize,
     });
-    exe.step.dependOn(&cmd.step);
-    exe.addAnonymousModule("clap", pkgs.clap);
-    exe.addAnonymousModule("config", pkgs.config);
+    exe.addModule("clap", clap.module("clap"));
+    exe.addAnonymousModule("config", .{ .source_file = .{ .path = "config.zig" } });
 
     b.installArtifact(exe);
 
