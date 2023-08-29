@@ -13,10 +13,10 @@ and/or fun. Please abandon any expectations of this being a serious project.
 
 ## Building
 
-Zig 0.10.0 is required. To clone and build, simply run:
+Zig 0.11.0 is required. To clone and build, run:
 
 ```console
-$ git clone --recursive https://github.com/gpanders/fzy.zig
+$ git clone https://git.sr.ht/~gpanders/fzy.zig
 $ cd fzy.zig
 $ zig build
 ```
@@ -25,7 +25,7 @@ This will build an `fzy` binary in `zig-out/bin/`. To install to a different
 prefix, use the `-p` flag:
 
 ```console
-$ zig build -p /usr/local
+$ zig build -p ~/.local
 ```
 
 By default, `fzy.zig` is built in `Debug` mode. This is very slow. If you
@@ -33,7 +33,7 @@ intend to actually use `fzy`, you should compile in either `ReleaseSafe` or
 `ReleaseFast` mode:
 
 ```console
-$ zig build -Drelease-fast
+$ zig build -Doptimize=ReleaseSafe
 ```
 
 ## Usage
